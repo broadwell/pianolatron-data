@@ -2,6 +2,7 @@
 
 """ Build per-DRUID metadata .json files for consumption by the Pianolatron app. """
 
+import json
 import logging
 from pathlib import Path
 
@@ -69,6 +70,11 @@ def get_metadata_for_druid(druid):
             "PURL": PURL_BASE + druid,
         }
     )
+
+    output_path = Path(f"json/{druid}.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w") as _fh:
+        json.dump(metadata, _fh, indent=2)
 
 
 def main():

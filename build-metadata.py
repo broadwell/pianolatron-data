@@ -2,6 +2,7 @@
 
 """ Build per-DRUID metadata .json files for consumption by the Pianolatron app. """
 
+import logging
 from pathlib import Path
 
 import requests
@@ -34,6 +35,8 @@ def get_value_by_xpath(xml_tree, xpath):
 
 
 def get_metadata_for_druid(druid):
+    logging.info(f"Processing {druid}...")
+
     metadata = {}
 
     mods_filepath = Path(f"mods/{druid}.mods")
@@ -49,7 +52,6 @@ def get_metadata_for_druid(druid):
                     etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
                 )
 
-    print(druid)
     metadata.update(
         {
             "title": get_value_by_xpath(xml_tree, "(x:titleInfo/x:title)[1]/text()"),
@@ -68,11 +70,11 @@ def get_metadata_for_druid(druid):
         }
     )
 
-    print(metadata)
-
 
 def main():
     """ Command-line entry-point. """
+
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     for druid in DRUIDS:
         get_metadata_for_druid(druid)

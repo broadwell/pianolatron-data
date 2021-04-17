@@ -31,7 +31,7 @@ def get_value_by_xpath(xml_tree, xpath):
             xpath,
             namespaces=NS,
         )[0]
-    except:
+    except IndexError:
         return "unknown"
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 
 import requests
 from lxml import etree
+from mido import MidiFile, tempo2bpm
 
 DRUIDS = [
     "zb497jz4405",
@@ -70,6 +71,7 @@ def get_metadata_for_druid(druid):
                 xml_tree, "x:identifier[@type='issue number']/text()"
             ),
             "PURL": PURL_BASE + druid,
+            "tempoMap": build_tempo_map_from_midi(druid),
         }
     )
 
@@ -77,6 +79,24 @@ def get_metadata_for_druid(druid):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
         json.dump(metadata, _fh, indent=2)
+
+
+def build_tempo_map_from_midi(druid):
+
+    midi_filepath = Path(f"midi/{druid}.mid")
+
+    midi = MidiFile(midi_filepath)
+
+    track0 = midi.tracks[0]
+
+    tempo_map = []
+    current_tick = 0
+    for i, event in enumerate(track0):
+        current_tick += event.time
+        if event.type == "set_tempo":
+            tempo_map.append((current_tick, tempo2bpm(event.tempo)))
+
+    return tempo_map
 
 
 def main():

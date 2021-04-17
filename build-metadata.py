@@ -39,8 +39,6 @@ def get_value_by_xpath(xml_tree, xpath):
 def get_metadata_for_druid(druid):
     logging.info(f"Processing {druid}...")
 
-    metadata = {}
-
     mods_filepath = Path(f"mods/{druid}.mods")
 
     if mods_filepath.exists():
@@ -54,31 +52,24 @@ def get_metadata_for_druid(druid):
                     etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
                 )
 
-    metadata.update(
-        {
-            "title": get_value_by_xpath(xml_tree, "(x:titleInfo/x:title)[1]/text()"),
-            "composer": get_value_by_xpath(
-                xml_tree,
-                "x:name[descendant::x:roleTerm[text()='composer']]/"
-                "x:namePart[not(@type='date')]/text()",
-            ),
-            "performer": get_value_by_xpath(
-                xml_tree,
-                "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
-                "x:namePart[not(@type='date')]/text()",
-            ),
-            "label": get_value_by_xpath(
-                xml_tree, "x:identifier[@type='issue number']/text()"
-            ),
-            "PURL": PURL_BASE + druid,
-            "tempoMap": build_tempo_map_from_midi(druid),
-        }
-    )
-
-    output_path = Path(f"json/{druid}.json")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w") as _fh:
-        json.dump(metadata, _fh, indent=2)
+    return {
+        "title": get_value_by_xpath(xml_tree, "(x:titleInfo/x:title)[1]/text()"),
+        "composer": get_value_by_xpath(
+            xml_tree,
+            "x:name[descendant::x:roleTerm[text()='composer']]/"
+            "x:namePart[not(@type='date')]/text()",
+        ),
+        "performer": get_value_by_xpath(
+            xml_tree,
+            "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
+            "x:namePart[not(@type='date')]/text()",
+        ),
+        "label": get_value_by_xpath(
+            xml_tree, "x:identifier[@type='issue number']/text()"
+        ),
+        "PURL": PURL_BASE + druid,
+        "tempoMap": build_tempo_map_from_midi(druid),
+    }
 
 
 def build_tempo_map_from_midi(druid):
@@ -99,13 +90,21 @@ def build_tempo_map_from_midi(druid):
     return tempo_map
 
 
+def write_json(druid, metadata, indent=2):
+    output_path = Path(f"json/{druid}.json")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w") as _fh:
+        json.dump(metadata, _fh, indent=indent)
+
+
 def main():
     """ Command-line entry-point. """
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     for druid in DRUIDS:
-        get_metadata_for_druid(druid)
+        metadata = get_metadata_for_druid(druid)
+        write_json(druid, metadata)
 
 
 if __name__ == "__main__":

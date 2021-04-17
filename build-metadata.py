@@ -58,11 +58,13 @@ def get_metadata_for_druid(druid):
             "title": get_value_by_xpath(xml_tree, "(x:titleInfo/x:title)[1]/text()"),
             "composer": get_value_by_xpath(
                 xml_tree,
-                "x:name[descendant::x:roleTerm[text()='composer']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='composer']]/"
+                "x:namePart[not(@type='date')]/text()",
             ),
             "performer": get_value_by_xpath(
                 xml_tree,
-                "x:name[descendant::x:roleTerm[text()='instrumentalist']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
+                "x:namePart[not(@type='date')]/text()",
             ),
             "label": get_value_by_xpath(
                 xml_tree, "x:identifier[@type='issue number']/text()"

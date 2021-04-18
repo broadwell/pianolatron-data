@@ -97,6 +97,15 @@ def get_hole_data(druid):
     if not txt_filepath.exists():
         return None
 
+    needed_keys = [
+        "NOTE_ATTACK",
+        "WIDTH_COL",
+        "ORIGIN_COL",
+        "ORIGIN_ROW",
+        "OFF_TIME",
+        "TRACKER_HOLE",
+    ]
+
     hole_data = []
 
     with txt_filepath.open("r") as _fh:
@@ -108,7 +117,8 @@ def get_hole_data(druid):
                 hole = {}
             if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
                 key, value = match.groups()
-                hole[key] = value
+                if key in needed_keys:
+                    hole[key] = value
             if line == "@@END: HOLE\n":
                 hole_data.append(hole)
 

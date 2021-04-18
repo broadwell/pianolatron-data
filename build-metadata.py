@@ -11,6 +11,8 @@ import requests
 from lxml import etree
 from mido import MidiFile, tempo2bpm
 
+WRITE_TEMPO_MAPS = False
+
 DRUIDS = [
     "zb497jz4405",
     "yj598pj2879",
@@ -69,7 +71,6 @@ def get_metadata_for_druid(druid):
             xml_tree, "x:identifier[@type='issue number']/text()"
         ),
         "PURL": PURL_BASE + druid,
-        "tempoMap": build_tempo_map_from_midi(druid),
     }
 
 
@@ -139,6 +140,8 @@ def main():
 
     for druid in DRUIDS:
         metadata = get_metadata_for_druid(druid)
+        if WRITE_TEMPO_MAPS:
+            metadata["tempoMap"] = build_tempo_map_from_midi(druid)
         metadata["holeData"] = get_hole_data(druid)
         write_json(druid, metadata)
 

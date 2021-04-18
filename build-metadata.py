@@ -4,6 +4,7 @@
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import requests
@@ -90,6 +91,30 @@ def build_tempo_map_from_midi(druid):
     return tempo_map
 
 
+def get_hole_data(druid):
+    txt_filepath = Path(f"txt/{druid}.txt")
+
+    if not txt_filepath.exists():
+        return None
+
+    hole_data = []
+
+    with txt_filepath.open("r") as _fh:
+        while (line := _fh.readline()) and line != "@@BEGIN: HOLES\n":
+            continue
+
+        while (line := _fh.readline()) and line != "@@END: HOLES\n":
+            if line == "@@BEGIN: HOLE\n":
+                hole = {}
+            if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
+                key, value = match.groups()
+                hole[key] = value
+            if line == "@@END: HOLE\n":
+                hole_data.append(hole)
+
+    return hole_data
+
+
 def write_json(druid, metadata, indent=2):
     output_path = Path(f"json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +129,7 @@ def main():
 
     for druid in DRUIDS:
         metadata = get_metadata_for_druid(druid)
+        metadata["holeData"] = get_hole_data(druid)
         write_json(druid, metadata)
 
 

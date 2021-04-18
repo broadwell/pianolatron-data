@@ -118,7 +118,7 @@ def get_hole_data(druid):
             if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
                 key, value = match.groups()
                 if key in needed_keys:
-                    hole[key] = value
+                    hole[key] = int(value.removesuffix("px"))
             if line == "@@END: HOLE\n":
                 hole_data.append(hole)
 

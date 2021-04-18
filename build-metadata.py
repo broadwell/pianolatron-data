@@ -29,17 +29,16 @@ NS = {"x": "http://www.loc.gov/mods/v3"}
 CACHE_MODS = True
 
 
-def get_value_by_xpath(xml_tree, xpath):
-    try:
-        return xml_tree.xpath(
-            xpath,
-            namespaces=NS,
-        )[0]
-    except IndexError:
-        return "unknown"
-
-
 def get_metadata_for_druid(druid):
+    def get_value_by_xpath(xpath):
+        try:
+            return xml_tree.xpath(
+                xpath,
+                namespaces=NS,
+            )[0]
+        except IndexError:
+            return "unknown"
+
     logging.info(f"Processing {druid}...")
 
     mods_filepath = Path(f"mods/{druid}.mods")
@@ -56,20 +55,16 @@ def get_metadata_for_druid(druid):
                 )
 
     return {
-        "title": get_value_by_xpath(xml_tree, "(x:titleInfo/x:title)[1]/text()"),
+        "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
         "composer": get_value_by_xpath(
-            xml_tree,
             "x:name[descendant::x:roleTerm[text()='composer']]/"
             "x:namePart[not(@type='date')]/text()",
         ),
         "performer": get_value_by_xpath(
-            xml_tree,
             "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
             "x:namePart[not(@type='date')]/text()",
         ),
-        "label": get_value_by_xpath(
-            xml_tree, "x:identifier[@type='issue number']/text()"
-        ),
+        "label": get_value_by_xpath("x:identifier[@type='issue number']/text()"),
         "PURL": PURL_BASE + druid,
     }
 
@@ -77,14 +72,12 @@ def get_metadata_for_druid(druid):
 def build_tempo_map_from_midi(druid):
 
     midi_filepath = Path(f"midi/{druid}.mid")
-
     midi = MidiFile(midi_filepath)
-
-    track0 = midi.tracks[0]
 
     tempo_map = []
     current_tick = 0
-    for i, event in enumerate(track0):
+
+    for event in midi.tracks[0]:
         current_tick += event.time
         if event.type == "set_tempo":
             tempo_map.append((current_tick, tempo2bpm(event.tempo)))

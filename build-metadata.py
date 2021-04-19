@@ -114,6 +114,10 @@ def get_hole_data(druid):
                 if key in needed_keys:
                     hole[key] = int(value.removesuffix("px"))
             if line == "@@END: HOLE\n":
+                if "NOTE_ATTACK" in hole:
+                    assert hole["NOTE_ATTACK"] == hole["ORIGIN_ROW"]
+                else:
+                    hole["NOTE_ATTACK"] = hole["ORIGIN_ROW"]
                 hole_data.append(hole)
 
     return hole_data

@@ -37,7 +37,7 @@ def get_metadata_for_druid(druid):
                 namespaces=NS,
             )[0]
         except IndexError:
-            return "unknown"
+            return None
 
     logging.info(f"Processing {druid}...")
 

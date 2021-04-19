@@ -116,8 +116,8 @@ def get_hole_data(druid):
             if line == "@@END: HOLE\n":
                 if "NOTE_ATTACK" in hole:
                     assert hole["NOTE_ATTACK"] == hole["ORIGIN_ROW"]
-                else:
-                    hole["NOTE_ATTACK"] = hole["ORIGIN_ROW"]
+                    del hole["NOTE_ATTACK"]
+
                 hole_data.append(hole)
 
     return hole_data

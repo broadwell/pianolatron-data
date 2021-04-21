@@ -89,7 +89,7 @@ def get_hole_data(druid):
     txt_filepath = Path(f"txt/{druid}.txt")
 
     if not txt_filepath.exists():
-        return None
+        return None, None
 
     needed_keys = [
         "NOTE_ATTACK",
@@ -100,11 +100,14 @@ def get_hole_data(druid):
         "TRACKER_HOLE",
     ]
 
+    roll_data = {}
     hole_data = []
 
     with txt_filepath.open("r") as _fh:
         while (line := _fh.readline()) and line != "@@BEGIN: HOLES\n":
-            continue
+            if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
+                key, value = match.groups()
+                roll_data[key] = value
 
         while (line := _fh.readline()) and line != "@@END: HOLES\n":
             if line == "@@BEGIN: HOLE\n":
@@ -120,7 +123,7 @@ def get_hole_data(druid):
 
                 hole_data.append(hole)
 
-    return hole_data
+    return roll_data, hole_data
 
 
 def write_json(druid, metadata, indent=2):
@@ -139,7 +142,8 @@ def main():
         metadata = get_metadata_for_druid(druid)
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
-        metadata["holeData"] = get_hole_data(druid)
+        roll_data, hole_data = get_hole_data(druid)
+        metadata["holeData"] = hole_data
         write_json(druid, metadata)
 
 

@@ -103,6 +103,8 @@ def get_hole_data(druid):
     roll_data = {}
     hole_data = []
 
+    dropped_holes = 0
+
     with txt_filepath.open("r") as _fh:
         while (line := _fh.readline()) and line != "@@BEGIN: HOLES\n":
             if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
@@ -117,12 +119,17 @@ def get_hole_data(druid):
                 if key in needed_keys:
                     hole[key] = int(value.removesuffix("px"))
             if line == "@@END: HOLE\n":
+
                 if "NOTE_ATTACK" in hole:
+                    assert "OFF_TIME" in hole
                     assert hole["NOTE_ATTACK"] == hole["ORIGIN_ROW"]
                     del hole["NOTE_ATTACK"]
+                    hole_data.append(hole)
+                else:
+                    assert "OFF_TIME" not in hole
+                    dropped_holes += 1
 
-                hole_data.append(hole)
-
+    print(f"Dropped Holes: {dropped_holes}")
     return roll_data, hole_data
 
 

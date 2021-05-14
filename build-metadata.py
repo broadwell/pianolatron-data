@@ -27,6 +27,11 @@ DRUIDS = [
     "kr397bv2881",
 ]
 
+ROLL_TYPES = {
+    "Welte-Mignon red roll (T-100).": "welte-red",
+    "Scale: 88n.": "88-note",
+}
+
 PURL_BASE = "https://purl.stanford.edu/"
 STACKS_BASE = "https://stacks.stanford.edu/file/"
 NS = {"x": "http://www.loc.gov/mods/v3"}
@@ -59,6 +64,11 @@ def get_metadata_for_druid(druid):
                     etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
                 )
 
+    roll_type = "NA"
+    for note in xml_tree.xpath("(x:note)", namespaces=NS):
+        if note is not None and note.text in ROLL_TYPES:
+            roll_type = ROLL_TYPES[note.text]
+
     return {
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
         "composer": get_value_by_xpath(
@@ -70,6 +80,7 @@ def get_metadata_for_druid(druid):
             "x:namePart[not(@type='date')]/text()",
         ),
         "label": get_value_by_xpath("x:identifier[@type='issue number']/text()"),
+        "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
 
@@ -206,6 +217,9 @@ def main():
     DRUIDS = get_druids_from_files()
 
     for druid in DRUIDS:
+
+        if PROCESS_IMAGE_FILES:
+             roll_image = get_roll_image(druid)
 
         metadata = get_metadata_for_druid(druid)
         if WRITE_TEMPO_MAPS:

@@ -192,16 +192,16 @@ def request_image(image_url):
         return None
 
 def get_roll_image(druid):
-    roll_image = Path(f"images/{druid}_0001_gr.tif")
+    roll_image = Path(f"images/{druid}_0001_gr.tiff")
     if not roll_image.is_file():
-        image_url = f"{STACKS_BASE}{druid}/{druid}_0001_gr.tif"
+        image_url = f"{STACKS_BASE}{druid}/{druid}_0001_gr.tiff"
         response = request_image(image_url)
         if response is None:
             # Ugh
-            image_url = image_url.replace('.tif','.tiff')
+            image_url = image_url.replace('.tiff','.tif')
             response = request_image(image_url)
         if response is not None:
-            roll_image = f"images/{druid}_0001_gr.tif"
+            roll_image = f"images/{druid}_0001_gr.tiff"
             with open(roll_image, "wb") as image_file:
                 shutil.copyfileobj(response.raw, image_file)
         else:

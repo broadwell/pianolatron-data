@@ -8,9 +8,12 @@ import re
 from pathlib import Path
 
 import requests
+import shutil
 from lxml import etree
 from mido import MidiFile, tempo2bpm
 from csv import DictReader
+
+PROCESS_IMAGE_FILES = True
 
 WRITE_TEMPO_MAPS = False
 
@@ -25,6 +28,7 @@ DRUIDS = [
 ]
 
 PURL_BASE = "https://purl.stanford.edu/"
+STACKS_BASE = "https://stacks.stanford.edu/file/"
 NS = {"x": "http://www.loc.gov/mods/v3"}
 
 CACHE_MODS = True
@@ -167,6 +171,32 @@ def get_druids_from_files():
                 druids_list.append(row['Druid'])
     return druids_list
 
+def request_image(image_url):
+    print("Downloading",image_url)
+    response = requests.get(image_url, stream=True)
+    if response.status_code == 200:
+        return response
+    else:
+        print("Unable to download",image_url,response)
+        return None
+
+def get_roll_image(druid):
+    roll_image = Path(f"images/{druid}_0001_gr.tif")
+    if not roll_image.is_file():
+        image_url = f"{STACKS_BASE}{druid}/{druid}_0001_gr.tif"
+        response = request_image(image_url)
+        if response is None:
+            # Ugh
+            image_url = image_url.replace('.tif','.tiff')
+            response = request_image(image_url)
+        if response is not None:
+            roll_image = f"images/{druid}_0001_gr.tif"
+            with open(roll_image, "wb") as image_file:
+                shutil.copyfileobj(response.raw, image_file)
+        else:
+            roll_image = None
+        del response
+    return roll_image
 
 def main():
     """ Command-line entry-point. """
@@ -176,6 +206,7 @@ def main():
     DRUIDS = get_druids_from_files()
 
     for druid in DRUIDS:
+
         metadata = get_metadata_for_druid(druid)
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)

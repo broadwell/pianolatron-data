@@ -59,7 +59,7 @@ def get_metadata_for_druid(druid):
         response = requests.get(f"{PURL_BASE}{druid}.mods")
         xml_tree = etree.fromstring(response.content)
         if CACHE_MODS:
-            with mods_filepath.open("r") as _fh:
+            with mods_filepath.open("w") as _fh:
                 _fh.write(
                     etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
                 )

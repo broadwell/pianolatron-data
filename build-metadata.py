@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 from lxml import etree
 from mido import MidiFile, tempo2bpm
+from csv import DictReader
 
 WRITE_TEMPO_MAPS = False
 
@@ -157,10 +158,22 @@ def write_json(druid, metadata, indent=2):
         json.dump(metadata, _fh)
 
 
+def get_druids_from_files():
+    druids_list = []
+    for druid_file in Path('druids/').glob('*.csv'):
+        with open(druid_file, 'r', newline='') as druid_csv:
+            druid_reader = DictReader(druid_csv)
+            for row in druid_reader:
+                druids_list.append(row['Druid'])
+    return druids_list
+
+
 def main():
     """ Command-line entry-point. """
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    DRUIDS = get_druids_from_files()
 
     for druid in DRUIDS:
         metadata = get_metadata_for_druid(druid)

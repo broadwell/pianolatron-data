@@ -12,6 +12,7 @@ import shutil
 from lxml import etree
 from mido import MidiFile, tempo2bpm
 from csv import DictReader
+from os import system
 
 PROCESS_IMAGE_FILES = True
 
@@ -31,6 +32,8 @@ ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
     "Scale: 88n.": "88-note",
 }
+
+ROLL_PARSER_DIR = "../roll-image-parser/"
 
 PURL_BASE = "https://purl.stanford.edu/"
 STACKS_BASE = "https://stacks.stanford.edu/file/"
@@ -192,22 +195,26 @@ def request_image(image_url):
         return None
 
 def get_roll_image(druid):
-    roll_image = Path(f"images/{druid}_0001_gr.tiff")
-    if not roll_image.is_file():
-        image_url = f"{STACKS_BASE}{druid}/{druid}_0001_gr.tiff"
+    matches = list(Path("images/").glob(f"{druid}_0001_gr.tif*"))
+    if not len(matches):
+        roll_fn = f"{druid}_0001_gr.tiff"
+        image_url = f"{STACKS_BASE}{druid}/{roll_fn}"
         response = request_image(image_url)
         if response is None:
             # Ugh
             image_url = image_url.replace('.tiff','.tif')
             response = request_image(image_url)
         if response is not None:
-            roll_image = f"images/{druid}_0001_gr.tiff"
+            roll_image = f"images/{roll_fn}"
             with open(roll_image, "wb") as image_file:
                 shutil.copyfileobj(response.raw, image_file)
         else:
             roll_image = None
         del response
+    else:
+        roll_image = matches[0]
     return roll_image
+    
 
 def main():
     """ Command-line entry-point. """
@@ -218,10 +225,11 @@ def main():
 
     for druid in DRUIDS:
 
-        if PROCESS_IMAGE_FILES:
-             roll_image = get_roll_image(druid)
-
         metadata = get_metadata_for_druid(druid)
+
+        if PROCESS_IMAGE_FILES:
+            roll_image = get_roll_image(druid)
+
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
         roll_data, hole_data = get_hole_data(druid)

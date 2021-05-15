@@ -189,6 +189,7 @@ def request_image(image_url):
     print("Downloading",image_url)
     response = requests.get(image_url, stream=True)
     if response.status_code == 200:
+        response.raw.decode_content = True
         return response
     else:
         print("Unable to download",image_url,response)
@@ -214,7 +215,17 @@ def get_roll_image(druid):
     else:
         roll_image = matches[0]
     return roll_image
-    
+
+def parse_roll_image(druid, roll_image, roll_type):
+    if roll_image is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
+        return 
+    if roll_type == "welte-red":
+        t2h_switch = "-m -r"
+    elif roll_type == "88-note":
+        t2h_switch = "-m --88"
+    # XXX Save analysis stderr output (2> {druid}_image_parse_errors.txt)?
+    cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switch} {roll_image} > txt/{druid}.txt 2> image_parse_errors.txt"
+    system(cmd)
 
 def main():
     """ Command-line entry-point. """
@@ -229,6 +240,7 @@ def main():
 
         if PROCESS_IMAGE_FILES:
             roll_image = get_roll_image(druid)
+            parse_roll_image(druid, roll_image, metadata['type'])
 
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)

@@ -13,8 +13,11 @@ from lxml import etree
 from mido import MidiFile, tempo2bpm
 from csv import DictReader
 from os import system
+import re
 
-PROCESS_IMAGE_FILES = True
+PROCESS_IMAGE_FILES = False
+
+EXTRACT_MIDI_FILES = True
 
 WRITE_TEMPO_MAPS = False
 
@@ -34,6 +37,7 @@ ROLL_TYPES = {
 }
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
+BINASC_DIR = "../binasc/"
 
 PURL_BASE = "https://purl.stanford.edu/"
 STACKS_BASE = "https://stacks.stanford.edu/file/"
@@ -227,6 +231,25 @@ def parse_roll_image(druid, roll_image, roll_type):
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {roll_image} > txt/{druid}.txt 2> image_parse_errors.txt"
     system(cmd)
 
+def convert_binasc_to_midi(binasc_data, druid, midi_type):
+    binasc_file_path = f"binasc/{druid}_{midi_type}.binasc"
+    with open(binasc_file_path, "w") as binasc_file:
+        binasc_file.write(binasc_data)
+    if Path(f"{BINASC_DIR}binasc").is_file():
+        cmd = f"{BINASC_DIR}binasc {binasc_file_path} -c midi/{druid}_{midi_type}.mid"
+        system(cmd)
+
+def extract_midi_from_analysis(druid):
+    if not Path(f"txt/{druid}.txt").is_file():
+        return
+    with open(f"txt/{druid}.txt", 'r') as analysis:
+        contents = analysis.read()
+        holes_data = re.search(r"^@HOLE_MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0].strip()
+        convert_binasc_to_midi(holes_data, druid, "raw")
+        notes_data = re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0].strip()
+        convert_binasc_to_midi(notes_data, druid, "note")
+    return True
+
 def main():
     """ Command-line entry-point. """
 
@@ -242,8 +265,11 @@ def main():
             roll_image = get_roll_image(druid)
             parse_roll_image(druid, roll_image, metadata['type'])
 
+        if EXTRACT_MIDI_FILES:
+            extract_midi_from_analysis(druid)
+
         if WRITE_TEMPO_MAPS:
-            metadata["tempoMap"] = build_tempo_map_from_midi(druid)
+           metadata["tempoMap"] = build_tempo_map_from_midi(druid)
         roll_data, hole_data = get_hole_data(druid)
         if hole_data:
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)

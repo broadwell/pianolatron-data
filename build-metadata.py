@@ -133,11 +133,28 @@ def get_hole_data(druid):
     return roll_data, hole_data
 
 
+def remap_hole_data(roll_data, hole_data):
+
+    new_hole_data = []
+
+    for hole in hole_data:
+        new_hole_data.append(
+            {
+                "x": hole["ORIGIN_COL"],
+                "y": hole["ORIGIN_ROW"],
+                "w": hole["WIDTH_COL"],
+                "h": hole["OFF_TIME"] - hole["ORIGIN_ROW"],
+            }
+        )
+
+    return new_hole_data
+
+
 def write_json(druid, metadata, indent=2):
     output_path = Path(f"json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
-        json.dump(metadata, _fh, indent=indent)
+        json.dump(metadata, _fh)
 
 
 def main():
@@ -150,8 +167,11 @@ def main():
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
         roll_data, hole_data = get_hole_data(druid)
-        metadata["holeData"] = hole_data
-        write_json(druid, metadata)
+        if hole_data:
+            metadata["holeData"] = remap_hole_data(roll_data, hole_data)
+        else:
+            metadata["holeData"] = None
+        write_json(druid, metadata, indent=0)
 
 
 if __name__ == "__main__":

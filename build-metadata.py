@@ -14,10 +14,13 @@ from mido import MidiFile, tempo2bpm
 from csv import DictReader
 from os import system
 import re
+from shutil import copy
 
-PROCESS_IMAGE_FILES = False
+PROCESS_IMAGE_FILES = True
 
 EXTRACT_MIDI_FILES = True
+
+APPLY_MIDI_EXPRESSIONS = True
 
 WRITE_TEMPO_MAPS = False
 
@@ -38,6 +41,7 @@ ROLL_TYPES = {
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
 BINASC_DIR = "../binasc/"
+MIDI2EXP_DIR = "../midi2exp/"
 
 PURL_BASE = "https://purl.stanford.edu/"
 STACKS_BASE = "https://stacks.stanford.edu/file/"
@@ -120,7 +124,7 @@ def get_hole_data(druid):
         "ORIGIN_COL",
         "ORIGIN_ROW",
         "OFF_TIME",
-        "TRACKER_HOLE",
+        "MIDI_KEY",
     ]
 
     roll_data = {}
@@ -147,6 +151,8 @@ def get_hole_data(druid):
                     assert "OFF_TIME" in hole
                     assert hole["NOTE_ATTACK"] == hole["ORIGIN_ROW"]
                     del hole["NOTE_ATTACK"]
+                    if hole["ORIGIN_ROW"] >= hole["OFF_TIME"]:
+                        print("WARNING: invalid note duration",hole["ORIGIN_ROW"],hole["OFF_TIME"],hole["MIDI_KEY"])
                     hole_data.append(hole)
                 else:
                     assert "OFF_TIME" not in hole
@@ -200,6 +206,7 @@ def request_image(image_url):
         return None
 
 def get_roll_image(druid):
+    roll_image = None
     matches = list(Path("images/").glob(f"{druid}_0001_gr.tif*"))
     if not len(matches):
         roll_fn = f"{druid}_0001_gr.tiff"
@@ -213,22 +220,23 @@ def get_roll_image(druid):
             roll_image = f"images/{roll_fn}"
             with open(roll_image, "wb") as image_file:
                 shutil.copyfileobj(response.raw, image_file)
-        else:
-            roll_image = None
         del response
     else:
         roll_image = matches[0]
     return roll_image
 
 def parse_roll_image(druid, roll_image, roll_type):
+    print("Running image parser on",druid,roll_image,roll_type)
     if roll_image is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
+        print("bailing out")
         return 
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
-        t2h_switches = "-m --88"
+        t2h_switches = "-m -8"
     # XXX Save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {roll_image} > txt/{druid}.txt 2> image_parse_errors.txt"
+    print("Parsing command:",cmd)
     system(cmd)
 
 def convert_binasc_to_midi(binasc_data, druid, midi_type):
@@ -240,14 +248,31 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
         system(cmd)
 
 def extract_midi_from_analysis(druid):
+    print("Extracting MIDI from",f"txt/{druid}.txt")
     if not Path(f"txt/{druid}.txt").is_file():
+        print("Analysis file not found")
         return
     with open(f"txt/{druid}.txt", 'r') as analysis:
         contents = analysis.read()
-        holes_data = re.search(r"^@HOLE_MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0].strip()
+        # NOTE: the binasc utility *requires* a trailing blank line at the end of the text input
+        holes_data = re.search(r"^@HOLE_MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0]
         convert_binasc_to_midi(holes_data, druid, "raw")
-        notes_data = re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0].strip()
+        notes_data = re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0]
         convert_binasc_to_midi(notes_data, druid, "note")
+    print("Finished MIDI extraction")
+
+def apply_midi_expressions(druid, roll_type):
+    if not Path(f"midi/{druid}_note.mid").is_file() or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").is_file():
+        print("Bailing out")
+        return
+    # There's a switch, -r, to remove the control tracks (3-4(5))
+    if roll_type == "welte-red":
+        m2e_switches = "-w -r"
+    elif roll_type == "88-note":
+        m2e_switches = ""
+    cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/{druid}_note.mid midi/{druid}_exp.mid"
+    print("Running expression extraction cmd",cmd)
+    system(cmd)
     return True
 
 def main():
@@ -255,18 +280,32 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = get_druids_from_files()
+    #DRUIDS = get_druids_from_files()
 
     for druid in DRUIDS:
 
         metadata = get_metadata_for_druid(druid)
 
+        print("Processed metadata for",druid)
+
         if PROCESS_IMAGE_FILES:
             roll_image = get_roll_image(druid)
+            print("Parsing roll image file",roll_image)
             parse_roll_image(druid, roll_image, metadata['type'])
+
+        print("Extracting midi for",druid)
 
         if EXTRACT_MIDI_FILES:
             extract_midi_from_analysis(druid)
+
+            if APPLY_MIDI_EXPRESSIONS:
+                apply_midi_expressions(druid, metadata['type'])
+            
+            # Use the expression MIDI if available, otherwise use the notes MIDI
+            if Path(f"midi/{druid}_exp.mid").is_file():
+                copy(Path(f"midi/{druid}_exp.mid"), Path(f"midi/{druid}.mid"))
+            elif Path(f"midi/{druid}_note.mid").is_file():
+                copy(Path(f"midi/{druid}_note.mid"), Path(f"midi/{druid}.mid"))
 
         if WRITE_TEMPO_MAPS:
            metadata["tempoMap"] = build_tempo_map_from_midi(druid)

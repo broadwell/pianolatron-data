@@ -5,19 +5,17 @@
 """ processing analysis output and playable .midi files needed to present   """
 """ each roll in the app.                                                   """
 
+from csv import DictReader
 import json
 import logging
-import re
+from os import system
 from pathlib import Path
+import re
+from shutil import copy, copyfileobj
 
 import requests
-import shutil
 from lxml import etree
 from mido import MidiFile, tempo2bpm
-from csv import DictReader
-from os import system
-import re
-from shutil import copy
 
 PROCESS_IMAGE_FILES = True
 EXTRACT_MIDI_FILES = True
@@ -214,7 +212,7 @@ def get_roll_image(druid):
         if response is not None:
             roll_image = f"images/{roll_fn}"
             with open(roll_image, "wb") as image_file:
-                shutil.copyfileobj(response.raw, image_file)
+                copyfileobj(response.raw, image_file)
         del response
     else:
         roll_image = matches[0]

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
-""" Build per-DRUID metadata .json files for consumption by the Pianolatron app. """
+""" Build per-DRUID metadata .json files for consumption by the Pianolatron """
+""" app, optionally using external tools to generate the roll image         """
+""" processing analysis output and playable .midi files needed to present   """
+""" each roll in the app.                                                   """
 
 import json
 import logging
@@ -17,11 +20,8 @@ import re
 from shutil import copy
 
 PROCESS_IMAGE_FILES = True
-
 EXTRACT_MIDI_FILES = True
-
 APPLY_MIDI_EXPRESSIONS = True
-
 WRITE_TEMPO_MAPS = False
 
 DRUIDS = [
@@ -48,7 +48,6 @@ STACKS_BASE = "https://stacks.stanford.edu/file/"
 NS = {"x": "http://www.loc.gov/mods/v3"}
 
 CACHE_MODS = True
-
 
 def get_metadata_for_druid(druid):
     def get_value_by_xpath(xpath):
@@ -95,7 +94,6 @@ def get_metadata_for_druid(druid):
         "PURL": PURL_BASE + druid,
     }
 
-
 def build_tempo_map_from_midi(druid):
 
     midi_filepath = Path(f"midi/{druid}.mid")
@@ -111,7 +109,6 @@ def build_tempo_map_from_midi(druid):
 
     return tempo_map
 
-
 def get_hole_data(druid):
     txt_filepath = Path(f"txt/{druid}.txt")
 
@@ -125,6 +122,7 @@ def get_hole_data(druid):
         "ORIGIN_ROW",
         "OFF_TIME",
         "MIDI_KEY",
+        "TRACKER_HOLE",
     ]
 
     roll_data = {}
@@ -152,15 +150,14 @@ def get_hole_data(druid):
                     assert hole["NOTE_ATTACK"] == hole["ORIGIN_ROW"]
                     del hole["NOTE_ATTACK"]
                     if hole["ORIGIN_ROW"] >= hole["OFF_TIME"]:
-                        print("WARNING: invalid note duration",hole["ORIGIN_ROW"],hole["OFF_TIME"],hole["MIDI_KEY"])
+                        logging.info(f"WARNING: invalid note duration: {hole}")
                     hole_data.append(hole)
                 else:
                     assert "OFF_TIME" not in hole
                     dropped_holes += 1
 
-    print(f"Dropped Holes: {dropped_holes}")
+    logging.info(f"Dropped Holes: {dropped_holes}")
     return roll_data, hole_data
-
 
 def remap_hole_data(roll_data, hole_data):
 
@@ -178,13 +175,11 @@ def remap_hole_data(roll_data, hole_data):
 
     return new_hole_data
 
-
 def write_json(druid, metadata, indent=2):
     output_path = Path(f"json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
         json.dump(metadata, _fh)
-
 
 def get_druids_from_files():
     druids_list = []
@@ -196,13 +191,13 @@ def get_druids_from_files():
     return druids_list
 
 def request_image(image_url):
-    print("Downloading",image_url)
+    logging.info(f"Downloading roll image {image_url}")
     response = requests.get(image_url, stream=True)
     if response.status_code == 200:
         response.raw.decode_content = True
         return response
     else:
-        print("Unable to download",image_url,response)
+        logging.info("Unable to download {image_url} - {response}")
         return None
 
 def get_roll_image(druid):
@@ -226,17 +221,15 @@ def get_roll_image(druid):
     return roll_image
 
 def parse_roll_image(druid, roll_image, roll_type):
-    print("Running image parser on",druid,roll_image,roll_type)
     if roll_image is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
-        print("bailing out")
         return 
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
         t2h_switches = "-m -8"
-    # XXX Save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
+    # XXX Is it helpful to save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {roll_image} > txt/{druid}.txt 2> image_parse_errors.txt"
-    print("Parsing command:",cmd)
+    logging.info(f"Running image parser on {druid} {roll_image} {roll_type}")
     system(cmd)
 
 def convert_binasc_to_midi(binasc_data, druid, midi_type):
@@ -248,10 +241,9 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
         system(cmd)
 
 def extract_midi_from_analysis(druid):
-    print("Extracting MIDI from",f"txt/{druid}.txt")
     if not Path(f"txt/{druid}.txt").is_file():
-        print("Analysis file not found")
         return
+    logging.info(f"Extracting MIDI from txt/{druid}.txt")
     with open(f"txt/{druid}.txt", 'r') as analysis:
         contents = analysis.read()
         # NOTE: the binasc utility *requires* a trailing blank line at the end of the text input
@@ -259,11 +251,9 @@ def extract_midi_from_analysis(druid):
         convert_binasc_to_midi(holes_data, druid, "raw")
         notes_data = re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0]
         convert_binasc_to_midi(notes_data, druid, "note")
-    print("Finished MIDI extraction")
 
 def apply_midi_expressions(druid, roll_type):
     if not Path(f"midi/{druid}_note.mid").is_file() or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").is_file():
-        print("Bailing out")
         return
     # There's a switch, -r, to remove the control tracks (3-4(5))
     if roll_type == "welte-red":
@@ -271,7 +261,7 @@ def apply_midi_expressions(druid, roll_type):
     elif roll_type == "88-note":
         m2e_switches = ""
     cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/{druid}_note.mid midi/{druid}_exp.mid"
-    print("Running expression extraction cmd",cmd)
+    logging.info(f"Running expression extraction on midi/{druid}_note.mid")
     system(cmd)
     return True
 
@@ -286,14 +276,9 @@ def main():
 
         metadata = get_metadata_for_druid(druid)
 
-        print("Processed metadata for",druid)
-
         if PROCESS_IMAGE_FILES:
             roll_image = get_roll_image(druid)
-            print("Parsing roll image file",roll_image)
             parse_roll_image(druid, roll_image, metadata['type'])
-
-        print("Extracting midi for",druid)
 
         if EXTRACT_MIDI_FILES:
             extract_midi_from_analysis(druid)
@@ -309,6 +294,7 @@ def main():
 
         if WRITE_TEMPO_MAPS:
            metadata["tempoMap"] = build_tempo_map_from_midi(druid)
+
         roll_data, hole_data = get_hole_data(druid)
         if hole_data:
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)

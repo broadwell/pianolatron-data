@@ -49,6 +49,7 @@ NS = {"x": "http://www.loc.gov/mods/v3"}
 CACHE_MODS = True
 CACHE_MANIFESTS = True
 
+
 def get_metadata_for_druid(druid):
     def get_value_by_xpath(xpath):
         try:
@@ -71,7 +72,9 @@ def get_metadata_for_druid(druid):
         if CACHE_MODS:
             with mods_filepath.open("w") as _fh:
                 _fh.write(
-                    etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
+                    etree.tostring(
+                        xml_tree, encoding="unicode", pretty_print=True
+                    )
                 )
 
     roll_type = "NA"
@@ -89,16 +92,19 @@ def get_metadata_for_druid(druid):
             "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
             "x:namePart[not(@type='date')]/text()",
         ),
-        "label": get_value_by_xpath("x:identifier[@type='issue number']/text()"),
+        "label": get_value_by_xpath(
+            "x:identifier[@type='issue number']/text()"
+        ),
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
+
 
 def get_iiif_manifest(druid):
 
     iiif_filepath = Path(f"manifests/{druid}.json")
     if iiif_filepath.exists():
-        iiif_manifest = json.load(open(iiif_filepath, 'r'))
+        iiif_manifest = json.load(open(iiif_filepath, "r"))
     else:
         response = requests.get(f"{PURL_BASE}{druid}/iiif/manifest")
         iiif_manifest = response.json()
@@ -107,14 +113,19 @@ def get_iiif_manifest(druid):
                 json.dump(iiif_manifest, _fh)
     return iiif_manifest
 
+
 def get_tiff_url(iiif_manifest):
-    for rendering in iiif_manifest['sequences'][0]['rendering']:
-        if rendering['format'] == "image/tiff":
-            return rendering['@id']
+    for rendering in iiif_manifest["sequences"][0]["rendering"]:
+        if rendering["format"] == "image/tiff":
+            return rendering["@id"]
+
 
 def get_iiif_url(iiif_manifest):
-    resource_id = iiif_manifest['sequences'][0]['canvases'][0]['images'][0]['resource']['@id']
-    return resource_id.replace('full/full/0/default.jpg', 'info.json')
+    resource_id = iiif_manifest["sequences"][0]["canvases"][0]["images"][0][
+        "resource"
+    ]["@id"]
+    return resource_id.replace("full/full/0/default.jpg", "info.json")
+
 
 def build_tempo_map_from_midi(druid):
 
@@ -130,6 +141,7 @@ def build_tempo_map_from_midi(druid):
             tempo_map.append((current_tick, tempo2bpm(event.tempo)))
 
     return tempo_map
+
 
 def get_hole_data(druid):
     txt_filepath = Path(f"txt/{druid}.txt")
@@ -181,6 +193,7 @@ def get_hole_data(druid):
     logging.info(f"Dropped Holes: {dropped_holes}")
     return roll_data, hole_data
 
+
 def remap_hole_data(roll_data, hole_data):
 
     new_hole_data = []
@@ -192,10 +205,13 @@ def remap_hole_data(roll_data, hole_data):
                 "y": hole["ORIGIN_ROW"],
                 "w": hole["WIDTH_COL"],
                 "h": hole["OFF_TIME"] - hole["ORIGIN_ROW"],
+                "m": hole["MIDI_KEY"],
+                "t": hole["TRACKER_HOLE"],
             }
         )
 
     return new_hole_data
+
 
 def write_json(druid, metadata, indent=2):
     output_path = Path(f"json/{druid}.json")
@@ -203,14 +219,16 @@ def write_json(druid, metadata, indent=2):
     with output_path.open("w") as _fh:
         json.dump(metadata, _fh)
 
+
 def get_druids_from_files():
     druids_list = []
-    for druid_file in Path('druids/').glob('*.csv'):
-        with open(druid_file, 'r', newline='') as druid_csv:
+    for druid_file in Path("druids/").glob("*.csv"):
+        with open(druid_file, "r", newline="") as druid_csv:
             druid_reader = DictReader(druid_csv)
             for row in druid_reader:
-                druids_list.append(row['Druid'])
+                druids_list.append(row["Druid"])
     return druids_list
+
 
 def request_image(image_url):
     logging.info(f"Downloading roll image {image_url}")
@@ -222,8 +240,9 @@ def request_image(image_url):
         logging.info("Unable to download {image_url} - {response}")
         return None
 
+
 def get_roll_image(image_url):
-    image_fn = re.sub("\.tif$", '.tiff', image_url.split('/')[-1])
+    image_fn = re.sub("\.tif$", ".tiff", image_url.split("/")[-1])
     image_filepath = Path(f"images/{image_fn}")
     if image_filepath.exists():
         return image_filepath
@@ -233,17 +252,26 @@ def get_roll_image(image_url):
     del response
     return image_filepath
 
+
 def parse_roll_image(druid, image_filepath, roll_type):
-    if image_filepath is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
-        return 
+    if (
+        image_filepath is None
+        or roll_type == "NA"
+        or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file()
+        or Path(f"txt/{druid}.txt").is_file()
+    ):
+        return
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
         t2h_switches = "-m -8"
     # XXX Is it helpful to save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> image_parse_errors.txt"
-    logging.info(f"Running image parser on {druid} {image_filepath} {roll_type}")
+    logging.info(
+        f"Running image parser on {druid} {image_filepath} {roll_type}"
+    )
     system(cmd)
+
 
 def convert_binasc_to_midi(binasc_data, druid, midi_type):
     binasc_file_path = f"binasc/{druid}_{midi_type}.binasc"
@@ -253,20 +281,33 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
         cmd = f"{BINASC_DIR}binasc {binasc_file_path} -c midi/{druid}_{midi_type}.mid"
         system(cmd)
 
+
 def extract_midi_from_analysis(druid):
     if not Path(f"txt/{druid}.txt").is_file():
         return
     logging.info(f"Extracting MIDI from txt/{druid}.txt")
-    with open(f"txt/{druid}.txt", 'r') as analysis:
+    with open(f"txt/{druid}.txt", "r") as analysis:
         contents = analysis.read()
         # NOTE: the binasc utility *requires* a trailing blank line at the end of the text input
-        holes_data = re.search(r"^@HOLE_MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0]
+        holes_data = (
+            re.search(r"^@HOLE_MIDIFILE:$(.*)", contents, re.M | re.S)
+            .group(1)
+            .split("\n@")[0]
+        )
         convert_binasc_to_midi(holes_data, druid, "raw")
-        notes_data = re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S).group(1).split("\n@")[0]
+        notes_data = (
+            re.search(r"^@MIDIFILE:$(.*)", contents, re.M | re.S)
+            .group(1)
+            .split("\n@")[0]
+        )
         convert_binasc_to_midi(notes_data, druid, "note")
 
+
 def apply_midi_expressions(druid, roll_type):
-    if not Path(f"midi/{druid}_note.mid").is_file() or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").is_file():
+    if (
+        not Path(f"midi/{druid}_note.mid").is_file()
+        or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").is_file()
+    ):
         return
     # There's a switch, -r, to remove the control tracks (3-4(5))
     if roll_type == "welte-red":
@@ -278,12 +319,13 @@ def apply_midi_expressions(druid, roll_type):
     system(cmd)
     return True
 
+
 def main():
-    """ Command-line entry-point. """
+    """Command-line entry-point."""
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    #DRUIDS = get_druids_from_files()
+    # DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 
@@ -295,14 +337,14 @@ def main():
 
         if PROCESS_IMAGE_FILES:
             roll_image = get_roll_image(get_tiff_url(iiif_manifest))
-            parse_roll_image(druid, roll_image, metadata['type'])
+            parse_roll_image(druid, roll_image, metadata["type"])
 
         if EXTRACT_MIDI_FILES:
             extract_midi_from_analysis(druid)
 
             if APPLY_MIDI_EXPRESSIONS:
-                apply_midi_expressions(druid, metadata['type'])
-            
+                apply_midi_expressions(druid, metadata["type"])
+
             # Use the expression MIDI if available, otherwise use the notes MIDI
             if Path(f"midi/{druid}_exp.mid").is_file():
                 copy(Path(f"midi/{druid}_exp.mid"), Path(f"midi/{druid}.mid"))
@@ -310,7 +352,7 @@ def main():
                 copy(Path(f"midi/{druid}_note.mid"), Path(f"midi/{druid}.mid"))
 
         if WRITE_TEMPO_MAPS:
-           metadata["tempoMap"] = build_tempo_map_from_midi(druid)
+            metadata["tempoMap"] = build_tempo_map_from_midi(druid)
 
         roll_data, hole_data = get_hole_data(druid)
         if hole_data:
@@ -320,11 +362,17 @@ def main():
         write_json(druid, metadata)
 
         if BUILD_CATALOG:
-            catalog_entries.append({ 'druid': druid, 'title': metadata["title"], 'image_url': get_iiif_url(iiif_manifest) })
+            catalog_entries.append(
+                {
+                    "druid": druid,
+                    "title": iiif_manifest["label"].replace(" : ", ": "),
+                    "image_url": get_iiif_url(iiif_manifest),
+                }
+            )
 
     if BUILD_CATALOG:
-        with open('catalog.json', 'w') as catalog_file:
-            json.dump(catalog_entries, catalog_file)
+        with open("catalog.json", "w", encoding="utf8") as catalog_file:
+            json.dump(catalog_entries, catalog_file, ensure_ascii=False)
 
 
 if __name__ == "__main__":

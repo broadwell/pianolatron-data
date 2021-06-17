@@ -17,6 +17,7 @@ import requests
 from lxml import etree
 from mido import MidiFile, tempo2bpm
 
+BUILD_CATALOG = True
 PROCESS_IMAGE_FILES = True
 EXTRACT_MIDI_FILES = True
 APPLY_MIDI_EXPRESSIONS = True
@@ -46,6 +47,7 @@ STACKS_BASE = "https://stacks.stanford.edu/file/"
 NS = {"x": "http://www.loc.gov/mods/v3"}
 
 CACHE_MODS = True
+CACHE_MANIFESTS = True
 
 def get_metadata_for_druid(druid):
     def get_value_by_xpath(xpath):
@@ -91,6 +93,28 @@ def get_metadata_for_druid(druid):
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
+
+def get_iiif_manifest(druid):
+
+    iiif_filepath = Path(f"manifests/{druid}.json")
+    if iiif_filepath.exists():
+        iiif_manifest = json.load(open(iiif_filepath, 'r'))
+    else:
+        response = requests.get(f"{PURL_BASE}{druid}/iiif/manifest")
+        iiif_manifest = response.json()
+        if CACHE_MANIFESTS:
+            with iiif_filepath.open("w") as _fh:
+                json.dump(iiif_manifest, _fh)
+    return iiif_manifest
+
+def get_tiff_url(iiif_manifest):
+    for rendering in iiif_manifest['sequences'][0]['rendering']:
+        if rendering['format'] == "image/tiff":
+            return rendering['@id']
+
+def get_iiif_url(iiif_manifest):
+    resource_id = iiif_manifest['sequences'][0]['canvases'][0]['images'][0]['resource']['@id']
+    return resource_id.replace('full/full/0/default.jpg', 'info.json')
 
 def build_tempo_map_from_midi(druid):
 
@@ -198,36 +222,27 @@ def request_image(image_url):
         logging.info("Unable to download {image_url} - {response}")
         return None
 
-def get_roll_image(druid):
-    roll_image = None
-    matches = list(Path("images/").glob(f"{druid}_0001_gr.tif*"))
-    if not len(matches):
-        roll_fn = f"{druid}_0001_gr.tiff"
-        image_url = f"{STACKS_BASE}{druid}/{roll_fn}"
-        response = request_image(image_url)
-        if response is None:
-            # Ugh
-            image_url = image_url.replace('.tiff','.tif')
-            response = request_image(image_url)
-        if response is not None:
-            roll_image = f"images/{roll_fn}"
-            with open(roll_image, "wb") as image_file:
-                copyfileobj(response.raw, image_file)
-        del response
-    else:
-        roll_image = matches[0]
-    return roll_image
+def get_roll_image(image_url):
+    image_fn = re.sub("\.tif$", '.tiff', image_url.split('/')[-1])
+    image_filepath = Path(f"images/{image_fn}")
+    if image_filepath.exists():
+        return image_filepath
+    response = request_image(image_url)
+    with open(image_filepath, "wb") as image_file:
+        copyfileobj(response.raw, image_file)
+    del response
+    return image_filepath
 
-def parse_roll_image(druid, roll_image, roll_type):
-    if roll_image is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
+def parse_roll_image(druid, image_filepath, roll_type):
+    if image_filepath is None or roll_type == "NA" or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file() or Path(f"txt/{druid}.txt").is_file():
         return 
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
         t2h_switches = "-m -8"
     # XXX Is it helpful to save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
-    cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {roll_image} > txt/{druid}.txt 2> image_parse_errors.txt"
-    logging.info(f"Running image parser on {druid} {roll_image} {roll_type}")
+    cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> image_parse_errors.txt"
+    logging.info(f"Running image parser on {druid} {image_filepath} {roll_type}")
     system(cmd)
 
 def convert_binasc_to_midi(binasc_data, druid, midi_type):
@@ -270,12 +285,16 @@ def main():
 
     #DRUIDS = get_druids_from_files()
 
+    catalog_entries = []
+
     for druid in DRUIDS:
 
         metadata = get_metadata_for_druid(druid)
 
+        iiif_manifest = get_iiif_manifest(druid)
+
         if PROCESS_IMAGE_FILES:
-            roll_image = get_roll_image(druid)
+            roll_image = get_roll_image(get_tiff_url(iiif_manifest))
             parse_roll_image(druid, roll_image, metadata['type'])
 
         if EXTRACT_MIDI_FILES:
@@ -298,7 +317,14 @@ def main():
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)
         else:
             metadata["holeData"] = None
-        write_json(druid, metadata, indent=0)
+        write_json(druid, metadata)
+
+        if BUILD_CATALOG:
+            catalog_entries.append({ 'druid': druid, 'title': metadata["title"], 'image_url': get_iiif_url(iiif_manifest) })
+
+    if BUILD_CATALOG:
+        with open('catalog.json', 'w') as catalog_file:
+            json.dump(catalog_entries, catalog_file)
 
 
 if __name__ == "__main__":

@@ -115,9 +115,16 @@ def get_iiif_manifest(druid):
 
 
 def get_tiff_url(iiif_manifest):
+    if "rendering" not in iiif_manifest["sequences"][0]:
+        return None
+
     for rendering in iiif_manifest["sequences"][0]["rendering"]:
-        if rendering["format"] == "image/tiff":
+        if (
+            rendering["format"] == "image/tiff"
+            or rendering["format"] == "image/x-tiff-big"
+        ):
             return rendering["@id"]
+    return None
 
 
 def get_iiif_url(iiif_manifest):
@@ -320,12 +327,34 @@ def apply_midi_expressions(druid, roll_type):
     return True
 
 
+def concoct_roll_label(metadata, iiif_manifest):
+    # Note that the CSV lists of DRUIDs also provide labels for each roll, but
+    # this may not always be the case.
+    label = ""
+
+    if metadata["composer"] and metadata["performer"]:
+        label += (
+            metadata["composer"].split(",")[0].strip()
+            + "/"
+            + metadata["performer"].split(",")[0].strip()
+        )
+    elif metadata["composer"]:
+        label += metadata["composer"].split(",")[0].strip()
+    elif metadata["performer"]:
+        label += metadata["performer"].split(",")[0].strip()
+
+    # The IIIF manifest has already concoted a title from the MODS, so use it
+    label += " - " + iiif_manifest["label"].replace(" : ", ": ").strip()
+
+    return label
+
+
 def main():
     """Command-line entry-point."""
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # DRUIDS = get_druids_from_files()
+    DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 
@@ -336,6 +365,12 @@ def main():
         iiif_manifest = get_iiif_manifest(druid)
 
         if PROCESS_IMAGE_FILES:
+            tiff_url = get_tiff_url(iiif_manifest)
+            if tiff_url is None:
+                logging.error(
+                    f"Image URL not found in manifest for {druid}, skpping roll"
+                )
+                continue
             roll_image = get_roll_image(get_tiff_url(iiif_manifest))
             parse_roll_image(druid, roll_image, metadata["type"])
 
@@ -365,8 +400,9 @@ def main():
             catalog_entries.append(
                 {
                     "druid": druid,
-                    "title": iiif_manifest["label"].replace(" : ", ": "),
+                    "title": concoct_roll_label(metadata, iiif_manifest),
                     "image_url": get_iiif_url(iiif_manifest),
+                    "type": metadata["type"],
                 }
             )
 

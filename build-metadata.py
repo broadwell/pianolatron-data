@@ -292,6 +292,8 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
 def extract_midi_from_analysis(druid):
     if not Path(f"txt/{druid}.txt").is_file():
         return
+    if Path(f"midi/{druid}.mid").is_file():
+        return
     logging.info(f"Extracting MIDI from txt/{druid}.txt")
     with open(f"txt/{druid}.txt", "r") as analysis:
         contents = analysis.read()
@@ -407,8 +409,9 @@ def main():
             )
 
     if BUILD_CATALOG:
+        sorted_catalog = sorted(catalog_entries, key=lambda i: i["title"])
         with open("catalog.json", "w", encoding="utf8") as catalog_file:
-            json.dump(catalog_entries, catalog_file, ensure_ascii=False)
+            json.dump(sorted_catalog, catalog_file, ensure_ascii=False)
 
 
 if __name__ == "__main__":

@@ -332,23 +332,41 @@ def apply_midi_expressions(druid, roll_type):
 def concoct_roll_label(metadata, iiif_manifest):
     # Note that the CSV lists of DRUIDs also provide labels for each roll, but
     # this may not always be the case.
-    label = ""
+    composer = None
+    performer = None
+    title = None
 
-    if metadata["composer"] and metadata["performer"]:
-        label += (
-            metadata["composer"].split(",")[0].strip()
-            + "/"
-            + metadata["performer"].split(",")[0].strip()
-        )
-    elif metadata["composer"]:
-        label += metadata["composer"].split(",")[0].strip()
-    elif metadata["performer"]:
-        label += metadata["performer"].split(",")[0].strip()
+    for item in iiif_manifest["metadata"]:
+        if item["label"] == "Contributor":
+            if item["value"].find("composer") != -1:
+                composer = item["value"]
+            elif item["value"].find("instrumentalist") != -1:
+                performer = item["value"]
+
+    if metadata["composer"]:
+        composer = metadata["composer"]
+    if metadata["performer"]:
+        performer = metadata["performer"]
+        print("Performer from mods:", performer)
+
+    if composer is not None:
+        title = composer.split(",")[0].strip()
+
+    if performer is not None:
+        if title is not None:
+            title += "/" + performer.split(",")[0].strip()
+        else:
+            title = performer.split(",")[0].strip()
 
     # The IIIF manifest has already concoted a title from the MODS, so use it
-    label += " - " + iiif_manifest["label"].replace(" : ", ": ").strip()
+    label = iiif_manifest["label"].replace(" : ", ": ").strip()
 
-    return label
+    if title is not None:
+        title += " - " + label
+    else:
+        title = label
+
+    return title
 
 
 def main():

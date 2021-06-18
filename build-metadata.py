@@ -264,8 +264,8 @@ def parse_roll_image(druid, image_filepath, roll_type):
     if (
         image_filepath is None
         or roll_type == "NA"
-        or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").is_file()
-        or Path(f"txt/{druid}.txt").is_file()
+        or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").exists()
+        or Path(f"txt/{druid}.txt").exists()
     ):
         return
     if roll_type == "welte-red":
@@ -284,15 +284,15 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
     binasc_file_path = f"binasc/{druid}_{midi_type}.binasc"
     with open(binasc_file_path, "w") as binasc_file:
         binasc_file.write(binasc_data)
-    if Path(f"{BINASC_DIR}binasc").is_file():
+    if Path(f"{BINASC_DIR}binasc").exists():
         cmd = f"{BINASC_DIR}binasc {binasc_file_path} -c midi/{druid}_{midi_type}.mid"
         system(cmd)
 
 
 def extract_midi_from_analysis(druid):
-    if not Path(f"txt/{druid}.txt").is_file():
+    if not Path(f"txt/{druid}.txt").exists():
         return
-    if Path(f"midi/{druid}.mid").is_file():
+    if Path(f"midi/{druid}.mid").exists():
         return
     logging.info(f"Extracting MIDI from txt/{druid}.txt")
     with open(f"txt/{druid}.txt", "r") as analysis:
@@ -314,8 +314,8 @@ def extract_midi_from_analysis(druid):
 
 def apply_midi_expressions(druid, roll_type):
     if (
-        not Path(f"midi/{druid}_note.mid").is_file()
-        or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").is_file()
+        not Path(f"midi/{druid}_note.mid").exists()
+        or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").exists()
     ):
         return
     # There's a switch, -r, to remove the control tracks (3-4(5))
@@ -383,9 +383,9 @@ def main():
                 apply_midi_expressions(druid, metadata["type"])
 
             # Use the expression MIDI if available, otherwise use the notes MIDI
-            if Path(f"midi/{druid}_exp.mid").is_file():
+            if Path(f"midi/{druid}_exp.mid").exists():
                 copy(Path(f"midi/{druid}_exp.mid"), Path(f"midi/{druid}.mid"))
-            elif Path(f"midi/{druid}_note.mid").is_file():
+            elif Path(f"midi/{druid}_note.mid").exists():
                 copy(Path(f"midi/{druid}_note.mid"), Path(f"midi/{druid}.mid"))
 
         if WRITE_TEMPO_MAPS:

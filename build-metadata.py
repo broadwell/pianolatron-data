@@ -24,17 +24,13 @@ APPLY_MIDI_EXPRESSIONS = True
 WRITE_TEMPO_MAPS = False
 
 DRUIDS = [
-    "zb497jz4405",
-    "yj598pj2879",
-    "pz594dj8436",
-    "dj406yq6980",
-    "rx870zt5437",
-    "wt621xq0875",
-    "kr397bv2881",
+    "pk349zj4179",
+    "xy736dn5214",  # 65-note roll from G-C collection!
 ]
 
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
+    "Welte-Mignon red roll (T-100)..": "welte-red",  # Ugh
     "Scale: 88n.": "88-note",
 }
 
@@ -261,6 +257,7 @@ def get_roll_image(image_url):
 
 
 def parse_roll_image(druid, image_filepath, roll_type):
+    print("In parse_roll_image", druid, image_filepath, roll_type)
     if (
         image_filepath is None
         or roll_type == "NA"
@@ -347,7 +344,6 @@ def concoct_roll_label(metadata, iiif_manifest):
         composer = metadata["composer"]
     if metadata["performer"]:
         performer = metadata["performer"]
-        print("Performer from mods:", performer)
 
     if composer is not None:
         title = composer.split(",")[0].strip()
@@ -429,7 +425,13 @@ def main():
     if BUILD_CATALOG:
         sorted_catalog = sorted(catalog_entries, key=lambda i: i["title"])
         with open("catalog.json", "w", encoding="utf8") as catalog_file:
-            json.dump(sorted_catalog, catalog_file, ensure_ascii=False)
+            json.dump(
+                sorted_catalog,
+                catalog_file,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
 
 
 if __name__ == "__main__":

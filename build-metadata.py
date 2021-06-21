@@ -15,7 +15,11 @@ from shutil import copy, copyfileobj
 
 import requests
 from lxml import etree
+from PIL import Image
 from mido import MidiFile, tempo2bpm
+
+# Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
+Image.MAX_IMAGE_PIXELS = None
 
 BUILD_CATALOG = True
 PROCESS_IMAGE_FILES = True
@@ -25,9 +29,11 @@ WRITE_TEMPO_MAPS = False
 
 DRUIDS = [
     # "pk349zj4179",
-    "xy736dn5214",  # 65-note roll from G-C collection!
-    # "jw822wm2644",
+    # "xy736dn5214",  # 65-note roll from G-C collection!
+    "jw822wm2644",  # Needs to be flipped left-right
 ]
+
+ROLLS_TO_MIRROR = ["jw822wm2644"]
 
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
@@ -249,7 +255,7 @@ def request_image(image_url):
         return None
 
 
-def get_roll_image(image_url):
+def get_roll_image(image_url, druid):
     image_fn = re.sub("\.tif$", ".tiff", image_url.split("/")[-1])
     image_filepath = Path(f"images/{image_fn}")
     if image_filepath.exists():
@@ -258,6 +264,16 @@ def get_roll_image(image_url):
     with open(image_filepath, "wb") as image_file:
         copyfileobj(response.raw, image_file)
     del response
+    if druid in ROLLS_TO_MIRROR:
+        flip_image_left_right(image_filepath)
+    return image_filepath
+
+
+def flip_image_left_right(image_filepath):
+    logging.info(f"Flipping image left-right: {image_filepath}")
+    im = Image.open(image_filepath)
+    out = im.transpose(Image.FLIP_LEFT_RIGHT)
+    out.save(image_filepath)
     return image_filepath
 
 
@@ -389,7 +405,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # DRUIDS = get_druids_from_files()
+    DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 
@@ -406,7 +422,7 @@ def main():
                     f"Image URL not found in manifest for {druid}, skpping roll"
                 )
                 continue
-            roll_image = get_roll_image(get_tiff_url(iiif_manifest))
+            roll_image = get_roll_image(get_tiff_url(iiif_manifest), druid)
             parse_roll_image(druid, roll_image, metadata["type"])
 
         if EXTRACT_MIDI_FILES:

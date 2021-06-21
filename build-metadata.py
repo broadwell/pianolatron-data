@@ -25,14 +25,15 @@ WRITE_TEMPO_MAPS = False
 
 DRUIDS = [
     # "pk349zj4179",
-    # "xy736dn5214",  # 65-note roll from G-C collection!
-    "jw822wm2644",
+    "xy736dn5214",  # 65-note roll from G-C collection!
+    # "jw822wm2644",
 ]
 
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
     "Welte-Mignon red roll (T-100)..": "welte-red",  # Ugh
     "Scale: 88n.": "88-note",
+    "Scale: 65n.": "65-note",
 }
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
@@ -273,6 +274,8 @@ def parse_roll_image(druid, image_filepath, roll_type):
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
         t2h_switches = "-m -8"
+    elif roll_type == "65-note":
+        t2h_switches = "-m -5"
     # XXX Is it helpful to save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> image_parse_errors.txt"
     logging.info(
@@ -320,10 +323,9 @@ def apply_midi_expressions(druid, roll_type):
     ):
         return
     # There's a switch, -r, to remove the control tracks (3-4(5))
+    m2e_switches = ""
     if roll_type == "welte-red":
         m2e_switches = "-w -r"
-    elif roll_type == "88-note":
-        m2e_switches = ""
     cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/{druid}_note.mid midi/{druid}_exp.mid"
     logging.info(f"Running expression extraction on midi/{druid}_note.mid")
     system(cmd)
@@ -387,7 +389,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = get_druids_from_files()
+    # DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 

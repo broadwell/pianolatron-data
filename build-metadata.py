@@ -24,8 +24,9 @@ APPLY_MIDI_EXPRESSIONS = True
 WRITE_TEMPO_MAPS = False
 
 DRUIDS = [
-    "pk349zj4179",
-    "xy736dn5214",  # 65-note roll from G-C collection!
+    # "pk349zj4179",
+    # "xy736dn5214",  # 65-note roll from G-C collection!
+    "jw822wm2644",
 ]
 
 ROLL_TYPES = {
@@ -90,6 +91,9 @@ def get_metadata_for_druid(druid):
         ),
         "label": get_value_by_xpath(
             "x:identifier[@type='issue number']/text()"
+        ),
+        "responsibility": get_value_by_xpath(
+            "x:note[@type='statement of responsibility']/text()"
         ),
         "type": roll_type,
         "PURL": PURL_BASE + druid,
@@ -326,18 +330,18 @@ def apply_midi_expressions(druid, roll_type):
     return True
 
 
-def concoct_roll_label(metadata, iiif_manifest):
-    # Note that the CSV lists of DRUIDs also provide labels for each roll, but
+def concoct_roll_description(metadata, iiif_manifest):
+    # Note that the CSV lists of DRUIDs also provide descriptions for each roll, but
     # this may not always be the case.
     composer = None
     performer = None
-    title = None
+    description = None
 
     for item in iiif_manifest["metadata"]:
         if item["label"] == "Contributor":
             if item["value"].find("composer") != -1:
                 composer = item["value"]
-            elif item["value"].find("instrumentalist") != -1:
+            if item["value"].find("instrumentalist") != -1:
                 performer = item["value"]
 
     if metadata["composer"]:
@@ -346,23 +350,36 @@ def concoct_roll_label(metadata, iiif_manifest):
         performer = metadata["performer"]
 
     if composer is not None:
-        title = composer.split(",")[0].strip()
+        composer = composer.split(",")[0].strip()
+
+    # It might be preferable to use the "Statement of Responsiblity" instead of
+    # combining the composer and performer surnames, because it is more likely
+    # to provide better composer/arranger information, e.g., "Wagner-Brassin".
+    # Practically, however, this content has a wide range of formats --
+    # parentheticals and semicolons abound -- and also uses different and
+    # inconsistent name spelling conversations relative to the rest of the
+    # metadata, so on the whole it probably should not be used.
+    # if metadata["responsibility"]:
+    #    composer = metadata["responsibility"].lstrip().rstrip(" .,")
+
+    if composer is not None:
+        description = composer
 
     if performer is not None:
-        if title is not None:
-            title += "/" + performer.split(",")[0].strip()
+        if description is not None:
+            description += "/" + performer.split(",")[0].strip()
         else:
-            title = performer.split(",")[0].strip()
+            description = performer.split(",")[0].strip()
 
-    # The IIIF manifest has already concoted a title from the MODS, so use it
-    label = iiif_manifest["label"].replace(" : ", ": ").strip()
+    # The IIIF manifest has already concocted a title from the MODS, so use it
+    title = iiif_manifest["label"].replace(" : ", ": ").strip().capitalize()
 
-    if title is not None:
-        title += " - " + label
+    if description is not None:
+        description += " - " + title
     else:
-        title = label
+        description = title
 
-    return title
+    return description
 
 
 def main():
@@ -416,9 +433,10 @@ def main():
             catalog_entries.append(
                 {
                     "druid": druid,
-                    "title": concoct_roll_label(metadata, iiif_manifest),
+                    "title": concoct_roll_description(metadata, iiif_manifest),
                     "image_url": get_iiif_url(iiif_manifest),
                     "type": metadata["type"],
+                    "label": metadata["label"],
                 }
             )
 

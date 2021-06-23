@@ -21,7 +21,7 @@ from mido import MidiFile, tempo2bpm
 # Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
 Image.MAX_IMAGE_PIXELS = None
 
-BUILD_CATALOG = True
+BUILD_CATALOG = False
 PROCESS_IMAGE_FILES = True
 EXTRACT_MIDI_FILES = True
 APPLY_MIDI_EXPRESSIONS = True
@@ -30,7 +30,8 @@ WRITE_TEMPO_MAPS = False
 DRUIDS = [
     # "pk349zj4179",
     # "xy736dn5214",  # 65-note roll from G-C collection!
-    "jw822wm2644",  # Needs to be flipped left-right
+    # "jw822wm2644",  # Needs to be flipped left-right
+    "vj052cw2158",  # Spurious hole detected near top of roll
 ]
 
 ROLLS_TO_MIRROR = ["jw822wm2644"]
@@ -99,9 +100,9 @@ def get_metadata_for_druid(druid):
         "label": get_value_by_xpath(
             "x:identifier[@type='issue number']/text()"
         ),
-        "responsibility": get_value_by_xpath(
-            "x:note[@type='statement of responsibility']/text()"
-        ),
+        # "responsibility": get_value_by_xpath(
+        #    "x:note[@type='statement of responsibility']/text()"
+        # ),
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
@@ -405,7 +406,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = get_druids_from_files()
+    # DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 

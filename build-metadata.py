@@ -21,7 +21,7 @@ from mido import MidiFile, tempo2bpm
 # Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
 Image.MAX_IMAGE_PIXELS = None
 
-BUILD_CATALOG = False
+BUILD_CATALOG = True
 PROCESS_IMAGE_FILES = True
 EXTRACT_MIDI_FILES = True
 APPLY_MIDI_EXPRESSIONS = True
@@ -31,7 +31,16 @@ DRUIDS = [
     # "pk349zj4179",
     # "xy736dn5214",  # 65-note roll from G-C collection!
     # "jw822wm2644",  # Needs to be flipped left-right
-    "vj052cw2158",  # Spurious hole detected near top of roll
+    # "vj052cw2158",  # Spurious hole detected near top of roll
+    "vs059bb4318",
+    "bc072xf6791",
+    "mf443ns5829",
+    "wt621xq0875",
+    "zb497jz4405",
+    "dj406yq6980",
+    "pz594dj8436",
+    "cy287wz7683",
+    "cy287wz7683",
 ]
 
 ROLLS_TO_MIRROR = ["jw822wm2644"]
@@ -293,8 +302,8 @@ def parse_roll_image(druid, image_filepath, roll_type):
         t2h_switches = "-m -8"
     elif roll_type == "65-note":
         t2h_switches = "-m -5"
-    # XXX Is it helpful to save analysis stderr output to a file (2> {druid}_image_parse_errors.txt)?
-    cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> image_parse_errors.txt"
+    # XXX Is it helpful to save analysis stderr output to a file (2> logs/{druid}.err)?
+    cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> logs/{druid}.err"
     logging.info(
         f"Running image parser on {druid} {image_filepath} {roll_type}"
     )

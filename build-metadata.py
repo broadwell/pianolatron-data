@@ -40,10 +40,12 @@ DRUIDS = [
     "dj406yq6980",
     "pz594dj8436",
     "cy287wz7683",
-    "cy287wz7683",
+    "rx870zt5437",
 ]
 
 ROLLS_TO_MIRROR = ["jw822wm2644"]
+
+DUPLICATES_TO_SKIP = ["rr052wh1991"]
 
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
@@ -415,11 +417,14 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # DRUIDS = get_druids_from_files()
+    DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 
     for druid in DRUIDS:
+
+        if druid in DUPLICATES_TO_SKIP:
+            continue
 
         metadata = get_metadata_for_druid(druid)
 

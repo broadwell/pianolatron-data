@@ -317,7 +317,7 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
     with open(binasc_file_path, "w") as binasc_file:
         binasc_file.write(binasc_data)
     if Path(f"{BINASC_DIR}binasc").exists():
-        cmd = f"{BINASC_DIR}binasc {binasc_file_path} -c midi/{druid}_{midi_type}.mid"
+        cmd = f"{BINASC_DIR}binasc {binasc_file_path} -c midi/{midi_type}/{druid}_{midi_type}.mid"
         system(cmd)
 
 
@@ -346,7 +346,7 @@ def extract_midi_from_analysis(druid):
 
 def apply_midi_expressions(druid, roll_type):
     if (
-        not Path(f"midi/{druid}_note.mid").exists()
+        not Path(f"midi/note/{druid}_note.mid").exists()
         or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").exists()
     ):
         return
@@ -354,7 +354,7 @@ def apply_midi_expressions(druid, roll_type):
     m2e_switches = ""
     if roll_type == "welte-red":
         m2e_switches = "-w -r"
-    cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/{druid}_note.mid midi/{druid}_exp.mid"
+    cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/note/{druid}_note.mid midi/exp/{druid}_exp.mid"
     logging.info(f"Running expression extraction on midi/{druid}_note.mid")
     system(cmd)
     return True
@@ -448,9 +448,14 @@ def main():
 
             # Use the expression MIDI if available, otherwise use the notes MIDI
             if Path(f"midi/{druid}_exp.mid").exists():
-                copy(Path(f"midi/{druid}_exp.mid"), Path(f"midi/{druid}.mid"))
+                copy(
+                    Path(f"midi/exp/{druid}_exp.mid"), Path(f"midi/{druid}.mid")
+                )
             elif Path(f"midi/{druid}_note.mid").exists():
-                copy(Path(f"midi/{druid}_note.mid"), Path(f"midi/{druid}.mid"))
+                copy(
+                    Path(f"midi/exp/{druid}_note.mid"),
+                    Path(f"midi/{druid}.mid"),
+                )
 
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)

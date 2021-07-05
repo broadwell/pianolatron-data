@@ -32,18 +32,21 @@ DRUIDS = [
     # "xy736dn5214",  # 65-note roll from G-C collection!
     # "jw822wm2644",  # Needs to be flipped left-right
     # "vj052cw2158",  # Spurious hole detected near top of roll
-    "vs059bb4318",
-    "bc072xf6791",
-    "mf443ns5829",
-    "wt621xq0875",
-    "zb497jz4405",
-    "dj406yq6980",
-    "pz594dj8436",
-    "cy287wz7683",
-    "rx870zt5437",
+    # "vs059bb4318",
+    # "bc072xf6791",
+    # "mf443ns5829",
+    # "wt621xq0875",
+    # "zb497jz4405",
+    # "dj406yq6980",
+    # "pz594dj8436",
+    # "cy287wz7683",
+    # "rx870zt5437",
+    "fv104hn7521",
 ]
 
-ROLLS_TO_MIRROR = ["jw822wm2644"]
+# XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
+# Rolls should only be listed here for one execution of the script!
+ROLLS_TO_MIRROR = []  # ["jw822wm2644", "fv104hn7521"]
 
 DUPLICATES_TO_SKIP = ["rr052wh1991"]
 
@@ -270,12 +273,11 @@ def request_image(image_url):
 def get_roll_image(image_url, druid):
     image_fn = re.sub("\.tif$", ".tiff", image_url.split("/")[-1])
     image_filepath = Path(f"images/{image_fn}")
-    if image_filepath.exists():
-        return image_filepath
-    response = request_image(image_url)
-    with open(image_filepath, "wb") as image_file:
-        copyfileobj(response.raw, image_file)
-    del response
+    if not image_filepath.exists():
+        response = request_image(image_url)
+        with open(image_filepath, "wb") as image_file:
+            copyfileobj(response.raw, image_file)
+        del response
     if druid in ROLLS_TO_MIRROR:
         flip_image_left_right(image_filepath)
     return image_filepath
@@ -300,9 +302,9 @@ def parse_roll_image(druid, image_filepath, roll_type):
         return
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
-    elif roll_type == "88-note":
+    elif roll_type == "88_note":
         t2h_switches = "-m -8"
-    elif roll_type == "65-note":
+    elif roll_type == "65_note":
         t2h_switches = "-m -5"
     # XXX Is it helpful to save analysis stderr output to a file (2> logs/{druid}.err)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> logs/{druid}.err"
@@ -360,9 +362,9 @@ def apply_midi_expressions(druid, roll_type):
     return True
 
 
-def concoct_roll_description(metadata, iiif_manifest):
+def merge_iiif_metadata(metadata, iiif_manifest):
     # Note that the CSV lists of DRUIDs also provide descriptions for each roll, but
-    # this may not always be the case.
+    # this may not always be the available.
     composer = None
     performer = None
     description = None
@@ -370,17 +372,17 @@ def concoct_roll_description(metadata, iiif_manifest):
     for item in iiif_manifest["metadata"]:
         if item["label"] == "Contributor":
             if item["value"].find("composer") != -1:
-                composer = item["value"]
+                composer = item["value"].split("(")[0].strip()
             if item["value"].find("instrumentalist") != -1:
-                performer = item["value"]
+                performer = item["value"].split("(")[0].strip()
 
-    if metadata["composer"]:
+    if metadata["composer"] is not None:
         composer = metadata["composer"]
-    if metadata["performer"]:
+    if metadata["performer"] is not None:
         performer = metadata["performer"]
 
-    if composer is not None:
-        composer = composer.split(",")[0].strip()
+    # if composer is not None:
+    #    composer = composer.split(",")[0].strip()
 
     # It might be preferable to use the "Statement of Responsiblity" instead of
     # combining the composer and performer surnames, because it is more likely
@@ -393,7 +395,7 @@ def concoct_roll_description(metadata, iiif_manifest):
     #    composer = metadata["responsibility"].lstrip().rstrip(" .,")
 
     if composer is not None:
-        description = composer
+        description = composer.split(",")[0].strip()
 
     if performer is not None:
         if description is not None:
@@ -401,7 +403,7 @@ def concoct_roll_description(metadata, iiif_manifest):
         else:
             description = performer.split(",")[0].strip()
 
-    # The IIIF manifest has already concocted a title from the MODS, so use it
+    # The IIIF manifest has already concocted a title from the MODS
     title = iiif_manifest["label"].replace(" : ", ": ").strip().capitalize()
 
     if description is not None:
@@ -409,7 +411,11 @@ def concoct_roll_description(metadata, iiif_manifest):
     else:
         description = title
 
-    return description
+    metadata["composer"] = composer
+    metadata["performer"] = performer
+    metadata["title"] = description
+
+    return metadata
 
 
 def main():
@@ -447,13 +453,13 @@ def main():
                 apply_midi_expressions(druid, metadata["type"])
 
             # Use the expression MIDI if available, otherwise use the notes MIDI
-            if Path(f"midi/{druid}_exp.mid").exists():
+            if Path(f"midi/exp/{druid}_exp.mid").exists():
                 copy(
                     Path(f"midi/exp/{druid}_exp.mid"), Path(f"midi/{druid}.mid")
                 )
-            elif Path(f"midi/{druid}_note.mid").exists():
+            elif Path(f"midi/note/{druid}_note.mid").exists():
                 copy(
-                    Path(f"midi/exp/{druid}_note.mid"),
+                    Path(f"midi/note/{druid}_note.mid"),
                     Path(f"midi/{druid}.mid"),
                 )
 
@@ -465,13 +471,16 @@ def main():
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)
         else:
             metadata["holeData"] = None
+
+        metadata = merge_iiif_metadata(metadata, iiif_manifest)
+
         write_json(druid, metadata)
 
         if BUILD_CATALOG:
             catalog_entries.append(
                 {
                     "druid": druid,
-                    "title": concoct_roll_description(metadata, iiif_manifest),
+                    "title": metadata["title"],
                     "image_url": get_iiif_url(iiif_manifest),
                     "type": metadata["type"],
                     "label": metadata["label"],

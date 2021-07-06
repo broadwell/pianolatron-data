@@ -41,12 +41,15 @@ DRUIDS = [
     # "pz594dj8436",
     # "cy287wz7683",
     # "rx870zt5437",
-    "fv104hn7521",
+    # "fv104hn7521",
+    # "xy736dn5214",
+    # "fv104hn7521",
+    # "fy803vj4057",
 ]
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
-ROLLS_TO_MIRROR = []  # ["jw822wm2644", "fv104hn7521"]
+ROLLS_TO_MIRROR = []  # ["jw822wm2644", "fv104hn7521", "fy803vj4057"]
 
 DUPLICATES_TO_SKIP = ["rr052wh1991"]
 
@@ -279,7 +282,7 @@ def get_roll_image(image_url, druid):
             copyfileobj(response.raw, image_file)
         del response
     if druid in ROLLS_TO_MIRROR:
-        flip_image_left_right(image_filepath)
+        image_filepath = flip_image_left_right(image_filepath)
     return image_filepath
 
 
@@ -292,7 +295,6 @@ def flip_image_left_right(image_filepath):
 
 
 def parse_roll_image(druid, image_filepath, roll_type):
-    print("In parse_roll_image", druid, image_filepath, roll_type)
     if (
         image_filepath is None
         or roll_type == "NA"
@@ -302,15 +304,16 @@ def parse_roll_image(druid, image_filepath, roll_type):
         return
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
-    elif roll_type == "88_note":
+    elif roll_type == "88-note":
         t2h_switches = "-m -8"
-    elif roll_type == "65_note":
+    elif roll_type == "65-note":
         t2h_switches = "-m -5"
     # XXX Is it helpful to save analysis stderr output to a file (2> logs/{druid}.err)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> logs/{druid}.err"
     logging.info(
         f"Running image parser on {druid} {image_filepath} {roll_type}"
     )
+    # logging.info(cmd)
     system(cmd)
 
 
@@ -357,7 +360,7 @@ def apply_midi_expressions(druid, roll_type):
     if roll_type == "welte-red":
         m2e_switches = "-w -r"
     cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/note/{druid}_note.mid midi/exp/{druid}_exp.mid"
-    logging.info(f"Running expression extraction on midi/{druid}_note.mid")
+    logging.info(f"Running expression extraction on midi/note/{druid}_note.mid")
     system(cmd)
     return True
 

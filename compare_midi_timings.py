@@ -11,8 +11,15 @@ import mido
 
 EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
 
+# The unaccelerated note MIDI file for the roll
 unaccel = "11381959_no_accel-exp_420tpq.mid"
+# A MIDI file generated from the same roll, with acceleration
 accel = "11381959-peter-Figaro Fantasie, Horowitz GW.mid"
+
+# Used for all output filenames
+roll_id = unaccel.split("-")[0].split("_")[0]
+# Used in visualization plots
+roll_title = "Liszt/Busoni-Horowitz Figaro Fantasy Welte 4128"
 
 NOTES = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
 midiNumberNames = {}
@@ -45,7 +52,7 @@ def get_midi_speed(midi_filepath):
 
 
 def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
-    logging.info(f"Looking at {midi_filepath}")
+    logging.info(f"Getting note timings for {midi_filepath}")
 
     midifile = mido.MidiFile(midi_filepath)
 
@@ -54,14 +61,14 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
 
     tpb = midifile.ticks_per_beat
 
-    logging.info(f"{midi_filepath} ticks per beat: {tpb}")
+    logging.info(f"Ticks per beat: {tpb}")
 
     if len(midifile.tracks) > 3:
         unitrack = mido.merge_tracks(midifile.tracks[:3])
     else:
         unitrack = mido.merge_tracks(midifile.tracks)
 
-    logging.info(f"{midi_filepath} length of combined track: {len(unitrack)}")
+    logging.info(f"Total messages in combined track: {len(unitrack)}")
 
     current_tick = 0
     total_notes = 0
@@ -104,12 +111,10 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
                 )
             )
 
-    logging.info(f"{midi_filepath} total note_on events: {total_notes}")
+    logging.info(f"Total note_on events: {total_notes}")
 
-    # Sort simultaneous note events by note number, lowest to highest
+    # Sort simultaneous note events by note number, low to high
     note_events.sort(key=operator.itemgetter(2, 0))
-
-    logging.info(f"Length of sorted events: {len(note_events)}")
 
     return note_events
 
@@ -133,16 +138,21 @@ def main():
     unaccel_chars = [chr(note).replace("-", "~") for note in unaccel_notes]
     accel_chars = [chr(note).replace("-", "~") for note in accel_notes]
 
-    if ("-" in unaccel_chars) or ("-" in accel_chars):
+    gap_char = "-"
+
+    # This shouldn't happen, but check to be sure
+    if (gap_char in unaccel_chars) or (gap_char in accel_chars):
         logging.info(
-            "- is in the characterized strings, need to use a different gap char"
+            f"{gap_char} is in the characterized strings, need to use a different gap char"
         )
+        return
 
-    gap_char = ["-"]
+    alignment_fn = roll_id + "alignment.p"
 
-    if Path(f"globalxx_alignment.p").exists():
+    # The pickled alignment data is just the two sequences
+    if Path(f"{alignment_fn}").exists():
         logging.info("Loading pairwise alignment")
-        unaccel_seq, accel_seq = pickle.load(open("globalxx_alignment.p", "rb"))
+        unaccel_seq, accel_seq = pickle.load(open(alignment_fn, "rb"))
     else:
         logging.info("Computing pairwise alignment")
         alignments = pairwise2.align.globalxx(
@@ -154,9 +164,7 @@ def main():
         alignment = alignments[0]
         unaccel_seq = alignment.seqA
         accel_seq = alignment.seqB
-        pickle.dump(
-            (unaccel_seq, accel_seq), open("globalxx_alignment.p", "wb")
-        )
+        pickle.dump((unaccel_seq, accel_seq), open(alignment_fn, "wb"))
 
     # logging.info(f"Found {len(alignments)} alignments")
     # 'count', 'end', 'index', 'score', 'seqA', 'seqB', 'start'
@@ -176,12 +184,7 @@ def main():
         f"total unmatched notes in accelerated MIDI: {accel_seq.count('-')}"
     )
 
-    if len(unaccel_seq) != len(accel_seq):
-        logging.error(
-            f"Differing lengths of alignment sequences: {len(unaccel_seq)} {len(accel_seq)}, stopping."
-        )
-        return
-
+    # Accumulate data about matched MIDI messages between the sequences
     logging.info("ACCEL MATCH_INFO UNACCEL MATCH_INFO")
 
     divergences_by_sec = {}
@@ -255,6 +258,9 @@ def main():
         if str(accel_item) != "-":
             accel_counter += 1
 
+    # Calculate overall and recent velocities at roughly each foot of the
+    # unaccelerated roll
+
     foot = 0
     last_unaccel_time = 0.0
     last_unaccel_tick = 0
@@ -309,6 +315,8 @@ def main():
             last_unaccel_tick = unaccel_tick
             last_accel_time = accel_time
 
+    # Derive average acceleration over the roll and plot it
+
     acceleration = (accel_v[-1] - accel_v[1]) / ((accel_t[-1] - accel_t[1]))
     logging.info(f"Average acceleration since ft 1: {acceleration}ft/m^2")
 
@@ -324,11 +332,11 @@ def main():
     plt.plot(accel_t, accel_v, "co", accel_t, poly1d_fn(accel_t), "--k")
     plt.xlim(0, int(max(accel_t) + 1))
     plt.ylim(int(min(accel_v)), int(max(accel_v)) + 1)
-    plt.title("Liszt/Busoni-Horowitz Figaro Fantasy Welte 4128")
+    plt.title(roll_title)
     plt.xlabel("minutes")
     plt.ylabel("feet/minute")
     plt.legend(["Observed velocities", "Best-fit acceleration"])
-    plt.savefig("Liszt|Busoni-Horowitz_Figaro.png")
+    plt.savefig(roll_id + "_acceleration.png")
 
 
 if __name__ == "__main__":

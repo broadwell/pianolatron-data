@@ -12,14 +12,17 @@ import mido
 EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
 
 # The unaccelerated note MIDI file for the roll
-unaccel = "11381959_no_accel-exp_420tpq.mid"
+unaccel = "green/11381959_no_accel-exp.mid"
 # A MIDI file generated from the same roll, with acceleration
-accel = "11381959-peter-Figaro Fantasie, Horowitz GW.mid"
+# accel = "Symphony 2-2,3 (Bthvn), Kiek RW.mid"
+accel = "green/11381959-peter-Figaro Fantasie, Horowitz GW.mid"
 
+# Used to differentiate multiple comparisons of the same roll ID
+roll_tag = "peterp"
 # Used for all output filenames
-roll_id = unaccel.split("-")[0].split("_")[0]
+roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
 # Used in visualization plots
-roll_title = "Liszt/Busoni-Horowitz Figaro Fantasy Welte 4128"
+roll_title = "Liszt/Gieseking Hungarian Rhapsody 14 Welte 3829"
 
 NOTES = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
 midiNumberNames = {}
@@ -56,6 +59,8 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
 
     midifile = mido.MidiFile(midi_filepath)
 
+    logging.info(f"MIDI duration is {midifile.length}")
+
     if use_this_tpb is not None:
         midifile.ticks_per_beat = use_this_tpb
 
@@ -73,6 +78,8 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
     current_tick = 0
     total_notes = 0
     current_tempo = 0.0  # In microseconds per beat
+    current_tempo_start_tick = 0
+    seconds_before_current_tempo = 0.0
 
     note_events = []
 
@@ -87,21 +94,33 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
         if event.type == "set_tempo":
 
             logging.info(
-                f"Tempo at {event.time}: {event.tempo} ms per beat ({mido.tempo2bpm(event.tempo)} bpm)"
+                f"Setting tempo at {event.time} to {event.tempo} ms per beat ({mido.tempo2bpm(event.tempo)} bpm)"
             )
+
             if use_this_tempo is not None:
                 logging.info(
                     f"Overriding tempo at {event.time} to {use_this_tempo} ms per beat ({mido.tempo2bpm(use_this_tempo)} bpm)"
                 )
                 event.tempo = use_this_tempo
 
+            ticks_at_this_tempo = current_tick - current_tempo_start_tick
+            seconds_before_current_tempo += mido.tick2second(
+                ticks_at_this_tempo, tpb, current_tempo
+            )
+
             current_tempo = event.tempo
+            current_tempo_start_tick = current_tick
 
         if event.type == "note_on":
             total_notes += 1
-            event_time_in_seconds = mido.tick2second(
-                current_tick, tpb, current_tempo
+
+            ticks_at_this_tempo = current_tick - current_tempo_start_tick
+
+            event_time_in_seconds = (
+                seconds_before_current_tempo
+                + mido.tick2second(ticks_at_this_tempo, tpb, current_tempo)
             )
+
             note_events.append(
                 (
                     event.note,
@@ -112,8 +131,11 @@ def get_note_timings(midi_filepath, use_this_tpb=None, use_this_tempo=None):
             )
 
     logging.info(f"Total note_on events: {total_notes}")
+    logging.info(
+        f"Last event tick: {current_tick}, last note event time: {event_time_in_seconds}"
+    )
 
-    # Sort simultaneous note events by note number, low to high
+    # Sort note events by tick, then by note number, low to high
     note_events.sort(key=operator.itemgetter(2, 0))
 
     return note_events
@@ -147,7 +169,7 @@ def main():
         )
         return
 
-    alignment_fn = roll_id + "alignment.p"
+    alignment_fn = roll_id + "_alignment.p"
 
     # The pickled alignment data is just the two sequences
     if Path(f"{alignment_fn}").exists():
@@ -158,7 +180,7 @@ def main():
         alignments = pairwise2.align.globalxx(
             unaccel_chars,
             accel_chars,
-            gap_char=gap_char,
+            gap_char=[gap_char],
             one_alignment_only=True,
         )
         alignment = alignments[0]
@@ -310,7 +332,7 @@ def main():
                 f"Average acceleration since ft 10: {acceleration}ft/m^2"
             )
             accel_t.append(accel_time / 60.0)
-            accel_v.append(overall_accel_fpm)
+            accel_v.append(last_accel_fpm)
             last_unaccel_time = unaccel_time
             last_unaccel_tick = unaccel_tick
             last_accel_time = accel_time
@@ -325,7 +347,9 @@ def main():
     from scipy.stats import linregress
 
     regression = linregress(accel_t, accel_v)
-    print(regression)
+    logging.info(f"Results of linear regression on velocity samples:")
+    logging.info(f"Acceleration: {regression.slope} ft/min^2")
+    logging.info(f"Initial velocity: {regression.intercept} ft/min")
 
     coef = np.polyfit(accel_t, accel_v, 1)
     poly1d_fn = np.poly1d(coef)

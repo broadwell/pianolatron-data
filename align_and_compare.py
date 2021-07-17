@@ -16,12 +16,14 @@ EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
 # The unaccelerated note MIDI file for the roll
 unaccel = "red/mw870hc7232_no_accel-note.mid"
 # unaccel = "green/11381959_no_accel-exp.mp3"
+# unaccel = "green/11373080_no_accel-note.mid"
 # A MIDI file generated from the same roll, with acceleration
 accel = "red/Symphony 2-2,3 (Bthvn), Kiek RW.mid"
 # accel = "green_figaro_mp3/JH493UyQ70E_NAXOS_Schmitz.mp3"
 # accel = "green_figaro_mp3/UqinWTyQTKM_Julian_Dyer.mp3"
 # accel = "green/11381959-exp-tempo72.mp3"
 # accel = "green_figaro_mp3/Eipy7tcMUb4_Orchard_Bringins.mp3"
+# accel = "green/11373080-peter-Hungarian Rhapsody 14, Gieseking GW.mid"
 
 # unaccel_tps = None
 unaccel_tps = 433  # Needs to be set if non-accelerated input is an audio file
@@ -33,11 +35,10 @@ roll_tag = "peterp"
 # Used for all output filenames
 roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
 # Used in visualization plots
-# roll_title = "Liszt/Busoni Horowitz Figaro Fantasy Welte 4128"
-roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 Welte 3156"
+roll_title = "Liszt/Busoni Horowitz Figaro Fantasy Welte 4128"
+# roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 Welte 3156"
 
 NOTES = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
-chroma_notes = ["C", "1", "D", "2", "E", "F", "3", "G", "4", "A", "5", "B"]
 midiNumberNames = {}
 
 for midi_number in range(21, 109):
@@ -182,9 +183,6 @@ def get_chroma_features(audio_filepath):
     #    y=y, sr=fs, hop_length=hop_length, units="time"
     # )
 
-    # logging.info(f"Length of onsets: {len(onsets)}")
-    # print(onsets)
-
     logging.info(f"Getting pitch class chroma for {audio_filepath}")
     chroma = librosa.feature.chroma_stft(y=y, sr=fs, hop_length=hop_length)
 
@@ -209,9 +207,6 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
     note_events = []
     current_tick = 0
 
-    # matched_notes = 0
-    # unmatched_notes = 0
-
     chroma_values_file = open("chroma_values.txt", "w")
 
     chroma_values_file.write(
@@ -220,11 +215,6 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
     for x in range(chroma_time_bins):
         bin_time = x * chroma_time_quantum
 
-        # onset_matched = False
-        # for onset in onsets:
-        #     if onset >= bin_time and onset <= (bin_time + chroma_time_quantum):
-        #         onset_matched = True
-
         if ticks_per_second is not None:
             current_tick = bin_time * ticks_per_second
 
@@ -232,7 +222,6 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
         for c in range(12):
             bin_value = chroma[c][x]
             line += f"{bin_value:.2f}"
-            # note_name = chroma_notes[c]
             if note_on[c] is False and bin_value > 0.7:
                 note_on[c] = True
                 note_events.append([c, current_tick, bin_time])
@@ -242,11 +231,6 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
                 line += "  "
             else:
                 line += "  "
-        #         if onset_matched:
-        #             note_events.append([c, current_tick, bin_time])
-        #             matched_notes += 1
-        #         else:
-        #             unmatched_notes += 1
 
         chroma_values_file.write(line + "\n")
 
@@ -255,13 +239,6 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
 
     # Sort note events by tick, then by note number, low to high
     note_events.sort(key=operator.itemgetter(1, 0))
-
-    # logging.info(
-    #     f"{matched_notes} chroma note events successfully matched to an onset"
-    # )
-    # logging.info(
-    #     f"{unmatched_notes} chroma note events could not be matched to an onset"
-    # )
 
     chroma_values_file.close()
 
@@ -298,15 +275,10 @@ def compute_acceleration_by_matches(
         actual_feet_delta = (
             float(unaccel_tick) - float(last_unaccel_tick)
         ) / 3600.0
-        matched_event = matched_events_by_unaccel_ticks[unaccel_tick][0]
-        if unaccel_tick != matched_event[0][1]:
-            logging.error(
-                f"Unaccel ticks do not match: {unaccel_tick}, {matched_event[0][1]}"
-            )
-            return
-        unaccel_time = matched_event[0][2]
-        accel_tick = matched_event[1][1]
-        accel_time = matched_event[1][2]
+        matched_event = matched_events_by_unaccel_ticks[unaccel_tick]
+
+        unaccel_time = matched_event[0][0]
+        accel_time = matched_event[0][1]
 
         if accel_time > last_accel_time and unaccel_time > last_unaccel_time:
 
@@ -319,24 +291,17 @@ def compute_acceleration_by_matches(
             overall_unaccel_fpm = actual_feet_overall / unaccel_time * 60
             overall_accel_fpm = actual_feet_overall / accel_time * 60
 
-            acceleration = 0.0
-            if len(accel_v) > 11:
-                acceleration = (last_accel_fpm - accel_v[11]) / (
-                    (accel_time - accel_t[11])
-                )
-
             if int(last_foot) < int(actual_feet_overall):
                 logging.info(
-                    f"{actual_feet_overall:.4f}ft ({unaccel_tick} unaccel ticks), unaccel time is {unaccel_time:.4f}s, accel tick is {accel_tick}, time is {accel_time:.4f}s"
+                    f"{actual_feet_overall:.4f}ft ({unaccel_tick} unaccel ticks), unaccel time is {unaccel_time:.4f}s, accel time is {accel_time:.4f}s"
                 )
                 logging.info(
                     f"Actual ft delta: {actual_feet_delta:.4f}ft, unaccel delta v: {last_unaccel_fpm:.4f}ft/m, overall: {overall_unaccel_fpm:.4f}ft/m, accel delta v: {last_accel_fpm:.4f}ft/m, overall: {overall_accel_fpm:.4f}ft/m"
                 )
 
+            # XXX Hack to remove problematic samples
             if accel_time < 13:
-                print("sample from accel_time", accel_time, "being skipped")
                 continue
-            # logging.info(f"Average acceleration since ft 10: {acceleration}ft/m^2")
             accel_t.append(accel_time / 60.0)
             accel_v.append(last_accel_fpm)
 
@@ -346,7 +311,10 @@ def compute_acceleration_by_matches(
         last_foot = int(actual_feet_overall)
 
     # Derive average acceleration over the roll and plot it
+    visualize_observed_velocities(accel_t, accel_v)
 
+
+def visualize_observed_velocities(accel_t, accel_v):
     median_v = statistics.median(accel_v)
     mean_v = statistics.mean(accel_v)
     stdev_v = statistics.stdev(accel_v)
@@ -384,7 +352,6 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     # accel_file_tpb, accel_file_tempo = get_midi_speed(accel)
-
     # unaccel_events = get_note_timings(unaccel, accel_file_tpb, accel_file_tempo)
 
     if Path(unaccel).suffix == ".mp3" and Path(accel).suffix == ".mp3":
@@ -468,10 +435,15 @@ def main():
                 and accel_stride != last_accel_stride
             ):
 
-                matched_events_by_unaccel_ticks[unaccel_tick] = [
-                    unaccel_time,
-                    accel_time,
-                ]
+                if unaccel_tick not in matched_events_by_unaccel_ticks:
+                    matched_events_by_unaccel_ticks[unaccel_tick] = [
+                        [unaccel_time, accel_time]
+                    ]
+                else:
+                    matched_events_by_unaccel_ticks[unaccel_tick].append(
+                        [unaccel_time, accel_time]
+                    )
+
                 wp_file.write("*")
 
             wp_file.write("\n")
@@ -479,102 +451,9 @@ def main():
             last_unaccel_stride = unaccel_stride
             last_accel_stride = accel_stride
 
-        sample_interval = 3600  # In unaccelerated ticks (3600 = 1 foot)
-
-        last_foot = 0
-        last_unaccel_time = 0.0
-        last_unaccel_tick = 0
-        last_accel_time = 0.0
-
-        accel_v = []
-        accel_t = []
-
-        for unaccel_tick in sorted(matched_events_by_unaccel_ticks):
-            if (unaccel_tick - last_unaccel_tick) < sample_interval:
-                continue
-
-            actual_feet_overall = float(unaccel_tick) / 3600.0
-            actual_feet_delta = (
-                float(unaccel_tick) - float(last_unaccel_tick)
-            ) / 3600.0
-            matched_event = matched_events_by_unaccel_ticks[unaccel_tick]
-
-            unaccel_time = matched_event[0]
-            accel_time = matched_event[1]
-
-            if (
-                accel_time > last_accel_time
-                and unaccel_time > last_unaccel_time
-            ):
-
-                last_unaccel_fpm = (
-                    actual_feet_delta / (unaccel_time - last_unaccel_time) * 60
-                )
-                last_accel_fpm = (
-                    actual_feet_delta / (accel_time - last_accel_time) * 60
-                )
-                overall_unaccel_fpm = actual_feet_overall / unaccel_time * 60
-                overall_accel_fpm = actual_feet_overall / accel_time * 60
-
-                acceleration = 0.0
-                if len(accel_v) > 11:
-                    acceleration = (last_accel_fpm - accel_v[11]) / (
-                        (accel_time - accel_t[11])
-                    )
-
-                if int(last_foot) < int(actual_feet_overall):
-                    logging.info(
-                        f"{actual_feet_overall:.4f}ft ({unaccel_tick} unaccel ticks), unaccel time is {unaccel_time:.4f}s, accel time is {accel_time:.4f}s"
-                    )
-                    logging.info(
-                        f"Actual ft delta: {actual_feet_delta:.4f}ft, unaccel delta v: {last_unaccel_fpm:.4f}ft/m, overall: {overall_unaccel_fpm:.4f}ft/m, accel delta v: {last_accel_fpm:.4f}ft/m, overall: {overall_accel_fpm:.4f}ft/m"
-                    )
-                # logging.info(f"Average acceleration since ft 10: {acceleration}ft/m^2")
-
-                # XXX Hack to remove problematic samples
-                # if accel_time > 916:
-                #    continue
-                accel_t.append(accel_time / 60.0)
-                accel_v.append(last_accel_fpm)
-
-            last_unaccel_time = unaccel_time
-            last_unaccel_tick = unaccel_tick
-            last_accel_time = accel_time
-            last_foot = int(actual_feet_overall)
-
-        # Derive average acceleration over the roll and plot it
-
-        median_v = statistics.median(accel_v)
-        mean_v = statistics.mean(accel_v)
-        stdev_v = statistics.stdev(accel_v)
-        logging.info(
-            f"Median velocity: {median_v:.4f}, mean: {mean_v:.4f}, stdev: {stdev_v:.4f}"
+        compute_acceleration_by_matches(
+            matched_events_by_unaccel_ticks, per_foot=True
         )
-
-        acceleration = (accel_v[-1] - accel_v[1]) / ((accel_t[-1] - accel_t[1]))
-        logging.info(
-            f"Average acceleration since ft 1: {acceleration:.4f}ft/m^2"
-        )
-
-        import numpy as np
-        import matplotlib.pyplot as plt
-        from scipy.stats import linregress
-
-        regression = linregress(accel_t, accel_v)
-        logging.info(f"Results of linear regression on velocity samples:")
-        logging.info(f"Acceleration: {regression.slope:.4f} ft/min^2")
-        logging.info(f"Initial velocity: {regression.intercept:.4f} ft/min")
-
-        coef = np.polyfit(accel_t, accel_v, 1)
-        poly1d_fn = np.poly1d(coef)
-        plt.plot(accel_t, accel_v, "co", accel_t, poly1d_fn(accel_t), "--k")
-        plt.xlim(0, int(max(accel_t) + 1))
-        plt.ylim(int(min(accel_v)), int(max(accel_v)) + 1)
-        plt.title(roll_title)
-        plt.xlabel("minutes")
-        plt.ylabel("feet/minute")
-        plt.legend(["Observed velocities", "Best-fit acceleration"])
-        plt.savefig(roll_id + "_acceleration.png")
 
         return
 
@@ -627,14 +506,6 @@ def main():
         accel_seq = alignment.seqB
         pickle.dump((unaccel_seq, accel_seq), open(alignment_fn, "wb"))
 
-    # logging.info(f"Found {len(alignments)} alignments")
-    # 'count', 'end', 'index', 'score', 'seqA', 'seqB', 'start'
-
-    # for alignment in alignments:
-    #     logging.info(
-    #         f"{alignment.start} {alignment.end} {len(alignment.seqA)} {len(alignment.seqB)} {alignment.score}"
-    #     )
-
     unaccel_counter = 0
     accel_counter = 0
 
@@ -647,10 +518,6 @@ def main():
 
     # Accumulate data about matched MIDI messages between the sequences
     logging.info("ACCEL MATCH_INFO UNACCEL MATCH_INFO")
-
-    divergences_by_sec = {}
-
-    pct_divergences_by_sec = {}
 
     matched_events_by_unaccel_ticks = {}
 
@@ -680,36 +547,19 @@ def main():
                 )
                 return
 
-            unaccel_sec = unaccel_event[2]
-            accel_sec = accel_event[2]
-
-            sec = int(unaccel_sec)
-
-            divergence = unaccel_sec - accel_sec
-
-            pct_divergence = (unaccel_sec - accel_sec) / unaccel_sec * 100
-
-            if sec not in divergences_by_sec:
-                divergences_by_sec[sec] = [divergence]
-                pct_divergences_by_sec[sec] = [pct_divergence]
-            else:
-                divergences_by_sec[sec].append(divergence)
-                pct_divergences_by_sec[sec].append(pct_divergence)
+            unaccel_time = unaccel_event[2]
+            accel_time = accel_event[2]
 
             unaccel_tick = unaccel_event[1]
 
             if unaccel_tick not in matched_events_by_unaccel_ticks:
                 matched_events_by_unaccel_ticks[unaccel_tick] = [
-                    [unaccel_event, accel_event]
+                    [unaccel_time, accel_time]
                 ]
             else:
                 matched_events_by_unaccel_ticks[unaccel_tick].append(
-                    [unaccel_event, accel_event]
+                    [unaccel_time, accel_time]
                 )
-
-            # logging.info(
-            #     f"{unaccel_note_name} at {unaccel_event[3]}s matches {accel_note_name} at {accel_event[3]}s"
-            # )
 
         if str(unaccel_item) != "-":
             unaccel_counter += 1

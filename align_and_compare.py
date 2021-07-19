@@ -6,20 +6,23 @@ from pathlib import Path
 
 from Bio import pairwise2
 import librosa
+import librosa.display
+import matplotlib.pyplot as plt
 import mido
 import numpy as np
 import pickle
+from scipy.stats import linregress
 import statistics
 
 EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
 
 # The unaccelerated note MIDI file for the roll
-unaccel = "red/mw870hc7232_no_accel-note.mid"
-# unaccel = "green/11381959_no_accel-exp.mp3"
+# unaccel = "red/mw870hc7232_no_accel-note.mid"
+unaccel = "green/11381959_no_accel-exp.mp3"
 # unaccel = "green/11373080_no_accel-note.mid"
 # A MIDI file generated from the same roll, with acceleration
-accel = "red/Symphony 2-2,3 (Bthvn), Kiek RW.mid"
-# accel = "green_figaro_mp3/JH493UyQ70E_NAXOS_Schmitz.mp3"
+# accel = "red/Symphony 2-2,3 (Bthvn), Kiek RW.mid"
+accel = "green_figaro_mp3/JH493UyQ70E_NAXOS_Schmitz.mp3"
 # accel = "green_figaro_mp3/UqinWTyQTKM_Julian_Dyer.mp3"
 # accel = "green/11381959-exp-tempo72.mp3"
 # accel = "green_figaro_mp3/Eipy7tcMUb4_Orchard_Bringins.mp3"
@@ -31,12 +34,14 @@ unaccel_tps = 433  # Needs to be set if non-accelerated input is an audio file
 hop_length = 1024
 
 # Used to differentiate multiple comparisons of the same roll ID
-roll_tag = "peterp"
+roll_tag = "schmitz_audio"
 # Used for all output filenames
 roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
 # Used in visualization plots
 roll_title = "Liszt/Busoni Horowitz Figaro Fantasy Welte 4128"
 # roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 Welte 3156"
+
+viz_chroma = True
 
 NOTES = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
 midiNumberNames = {}
@@ -164,12 +169,18 @@ def get_midi_timings(
     return note_events
 
 
-def get_chroma_features(audio_filepath):
+def get_audio_timeseries(audio_filepath):
     if Path(audio_filepath.replace(".mp3", "p")).exists():
         y, fs = pickle.load(open(audio_filepath.replace(".mp3", ".p"), "rb"))
     else:
         y, fs = librosa.load(audio_filepath)  # , sr=None)
         pickle.dump([y, fs], open(audio_filepath.replace(".mp3", ".p"), "wb"))
+    return [y, fs]
+
+
+def get_chroma_features(audio_filepath):
+
+    y, fs = get_audio_timeseries(audio_filepath)
 
     duration = librosa.get_duration(y)
 
@@ -325,10 +336,6 @@ def visualize_observed_velocities(accel_t, accel_v):
     acceleration = (accel_v[-1] - accel_v[1]) / ((accel_t[-1] - accel_t[1]))
     logging.info(f"Average acceleration since ft 1: {acceleration:.4f}ft/m^2")
 
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from scipy.stats import linregress
-
     regression = linregress(accel_t, accel_v)
     logging.info(f"Results of linear regression on velocity samples:")
     logging.info(f"Acceleration: {regression.slope:.4f} ft/min^2")
@@ -344,6 +351,7 @@ def visualize_observed_velocities(accel_t, accel_v):
     plt.ylabel("feet/minute")
     plt.legend(["Observed velocities", "Best-fit acceleration"])
     plt.savefig(roll_id + "_acceleration.png")
+    plt.clf()
 
 
 def main():
@@ -356,6 +364,48 @@ def main():
 
     if Path(unaccel).suffix == ".mp3" and Path(accel).suffix == ".mp3":
         logging.info(f"Getting chroma features for {unaccel} and {accel}")
+
+        (
+            unaccel_chroma,
+            unaccel_fs,
+            unaccel_duration,
+            unaccel_total_samples,
+        ) = get_chroma_features(unaccel)
+        (
+            accel_chroma,
+            accel_fs,
+            accel_duration,
+            accel_total_samples,
+        ) = get_chroma_features(accel)
+
+        if viz_chroma:
+            fig, ax = plt.subplots(nrows=2, sharey=True)
+
+            img = librosa.display.specshow(
+                unaccel_chroma,
+                x_axis="time",
+                y_axis="chroma",
+                hop_length=hop_length,
+                ax=ax[0],
+            )
+            ax[0].set(
+                title=roll_id + " unaccelerated (top), accelerated (bottom)"
+            )
+
+            librosa.display.specshow(
+                accel_chroma,
+                x_axis="time",
+                y_axis="chroma",
+                hop_length=hop_length,
+                ax=ax[1],
+            )
+            # ax[1].set(title="Chroma Representation of " + Path(accel).name)
+
+            fig.colorbar(img, ax=ax)
+
+            plt.savefig(roll_id + "_chroma_comparison.png")
+            plt.clf()
+
         if Path(roll_id + "_dtw.p").exists():
             (
                 D,
@@ -366,18 +416,6 @@ def main():
                 accel_total_samples,
             ) = pickle.load(open(Path(roll_id + "_dtw.p"), "rb"))
         else:
-            (
-                unaccel_chroma,
-                unaccel_fs,
-                unaccel_duration,
-                unaccel_total_samples,
-            ) = get_chroma_features(unaccel)
-            (
-                accel_chroma,
-                accel_fs,
-                accel_duration,
-                accel_total_samples,
-            ) = get_chroma_features(accel)
             logging.info("Running dynamic time-warp matching")
             D, wp = librosa.sequence.dtw(
                 X=unaccel_chroma, Y=accel_chroma, metric="euclidean"
@@ -393,7 +431,69 @@ def main():
                 ],
                 open(Path(roll_id + "_dtw.p"), "wb"),
             )
-        # wp_s = np.asarray(wp) * hop_length / fs
+
+        wp_s = np.asarray(wp) * hop_length / unaccel_fs
+
+        if viz_chroma:
+            fig, ax = plt.subplots()
+            img = librosa.display.specshow(
+                D,
+                x_axis="time",
+                y_axis="time",
+                sr=unaccel_fs,
+                cmap="gray_r",
+                hop_length=hop_length,
+                ax=ax,
+            )
+            ax.plot(wp_s[:, 1], wp_s[:, 0], marker="o", color="r")
+            ax.set(
+                title="Warping Path on Acc. Cost Matrix $D$",
+                xlabel=Path(unaccel).name,
+                ylabel=Path(accel).name,
+            )
+            fig.colorbar(img, ax=ax)
+
+            plt.savefig(roll_id + "_chroma_warping_path.png")
+            plt.clf()
+
+            from matplotlib.patches import ConnectionPatch
+
+            unaccel_ts, unaccel_fs = get_audio_timeseries(unaccel)
+            accel_ts, accel_fs = get_audio_timeseries(accel)
+
+            fig, (ax1, ax2) = plt.subplots(
+                nrows=2, sharex=True, sharey=True, figsize=(8, 4)
+            )
+
+            # Plot x_2
+            librosa.display.waveshow(accel_ts, sr=accel_fs, ax=ax2)
+            ax2.set(title="Faster Version " + Path(accel).name)
+
+            # Plot x_1
+            librosa.display.waveshow(unaccel_ts, sr=unaccel_fs, ax=ax1)
+            ax1.set(title="Slower Version " + Path(unaccel).name)
+            ax1.label_outer()
+
+            n_arrows = 20
+            for tp1, tp2 in wp_s[:: len(wp_s) // n_arrows]:
+                # Create a connection patch between the aligned time points
+                # in each subplot
+                con = ConnectionPatch(
+                    xyA=(tp1, 0),
+                    xyB=(tp2, 0),
+                    axesA=ax1,
+                    axesB=ax2,
+                    coordsA="data",
+                    coordsB="data",
+                    color="r",
+                    linestyle="--",
+                    alpha=0.5,
+                )
+                ax2.add_artist(con)
+
+            plt.savefig(roll_id + "_chroma_time_correspondencs.png")
+            plt.clf()
+
         logging.info(f"Shape of warping path: {wp.shape}")
 
         unaccel_time_bins = unaccel_total_samples / hop_length

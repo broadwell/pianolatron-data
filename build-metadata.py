@@ -45,6 +45,7 @@ DRUIDS = [
     # "xy736dn5214",
     # "fv104hn7521",
     # "fy803vj4057",
+    "ym773gh2267",
 ]
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
@@ -175,6 +176,51 @@ def build_tempo_map_from_midi(druid):
     return tempo_map
 
 
+def merge_midi_velocities(roll_data, hole_data, druid):
+
+    midi_filepath = Path(f"midi/{druid}.mid")
+
+    if not midi_filepath.exists():
+        return hole_data
+
+    first_music_px = roll_data["FIRST_HOLE"]
+
+    midi = MidiFile(midi_filepath)
+
+    tick_notes_velocities = {}
+
+    for note_track in midi.tracks[1:3]:
+        current_tick = 0
+        for event in note_track:
+            current_tick += event.time
+            if event.type == "note_on":
+                if event.velocity != 0:
+                    if current_tick in tick_notes_velocities:
+                        tick_notes_velocities[current_tick][
+                            event.note
+                        ] = event.velocity
+                    else:
+                        tick_notes_velocities[current_tick] = {
+                            event.note: event.velocity
+                        }
+
+    for i in range(len(hole_data)):
+        hole = hole_data[i]
+
+        hole_tick = hole["ORIGIN_ROW"] - first_music_px
+        hole_midi = hole["MIDI_KEY"]
+
+        if (
+            hole_tick in tick_notes_velocities
+            and hole_midi in tick_notes_velocities[hole_tick][hole_midi]
+        ):
+            hole_data[i]["VELOCITY"] = tick_notes_velocities[hole_tick][
+                hole_midi
+            ]
+
+    return hole_data
+
+
 def get_hole_data(druid):
     txt_filepath = Path(f"txt/{druid}.txt")
 
@@ -188,7 +234,7 @@ def get_hole_data(druid):
         "ORIGIN_ROW",
         "OFF_TIME",
         "MIDI_KEY",
-        "TRACKER_HOLE",
+        # "TRACKER_HOLE",
     ]
 
     roll_data = {}
@@ -231,16 +277,19 @@ def remap_hole_data(roll_data, hole_data):
     new_hole_data = []
 
     for hole in hole_data:
-        new_hole_data.append(
-            {
-                "x": hole["ORIGIN_COL"],
-                "y": hole["ORIGIN_ROW"],
-                "w": hole["WIDTH_COL"],
-                "h": hole["OFF_TIME"] - hole["ORIGIN_ROW"],
-                "m": hole["MIDI_KEY"],
-                "t": hole["TRACKER_HOLE"],
-            }
-        )
+
+        new_hole = {
+            "x": hole["ORIGIN_COL"],
+            "y": hole["ORIGIN_ROW"],
+            "w": hole["WIDTH_COL"],
+            "h": hole["OFF_TIME"] - hole["ORIGIN_ROW"],
+            "m": hole["MIDI_KEY"],
+            # "t": hole["TRACKER_HOLE"],
+        }
+        if "VELOCITY" in hole:
+            new_hole["v"] = hole["VELOCITY"]
+
+        new_hole_data.append(new_hole)
 
     return new_hole_data
 
@@ -426,7 +475,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = get_druids_from_files()
+    # DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 
@@ -471,6 +520,7 @@ def main():
 
         roll_data, hole_data = get_hole_data(druid)
         if hole_data:
+            hole_data = merge_midi_velocities(roll_data, hole_data, druid)
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)
         else:
             metadata["holeData"] = None

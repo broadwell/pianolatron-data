@@ -27,27 +27,6 @@ EXTRACT_MIDI_FILES = True
 APPLY_MIDI_EXPRESSIONS = True
 WRITE_TEMPO_MAPS = False
 
-DRUIDS = [
-    # "pk349zj4179",
-    # "xy736dn5214",  # 65-note roll from G-C collection!
-    # "jw822wm2644",  # Needs to be flipped left-right
-    # "vj052cw2158",  # Spurious hole detected near top of roll
-    # "vs059bb4318",
-    # "bc072xf6791",
-    # "mf443ns5829",
-    # "wt621xq0875",
-    # "zb497jz4405",
-    # "dj406yq6980",
-    # "pz594dj8436",
-    # "cy287wz7683",
-    # "rx870zt5437",
-    # "fv104hn7521",
-    # "xy736dn5214",
-    # "fv104hn7521",
-    # "fy803vj4057",
-    "ym773gh2267",
-]
-
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
 ROLLS_TO_MIRROR = []  # ["jw822wm2644", "fv104hn7521", "fy803vj4057"]
@@ -183,7 +162,7 @@ def merge_midi_velocities(roll_data, hole_data, druid):
     if not midi_filepath.exists():
         return hole_data
 
-    first_music_px = roll_data["FIRST_HOLE"]
+    first_music_px = int(roll_data["FIRST_HOLE"].removesuffix("px"))
 
     midi = MidiFile(midi_filepath)
 
@@ -207,12 +186,12 @@ def merge_midi_velocities(roll_data, hole_data, druid):
     for i in range(len(hole_data)):
         hole = hole_data[i]
 
-        hole_tick = hole["ORIGIN_ROW"] - first_music_px
-        hole_midi = hole["MIDI_KEY"]
+        hole_tick = int(hole["ORIGIN_ROW"]) - first_music_px
+        hole_midi = int(hole["MIDI_KEY"])
 
         if (
             hole_tick in tick_notes_velocities
-            and hole_midi in tick_notes_velocities[hole_tick][hole_midi]
+            and hole_midi in tick_notes_velocities[hole_tick]
         ):
             hole_data[i]["VELOCITY"] = tick_notes_velocities[hole_tick][
                 hole_midi
@@ -475,7 +454,30 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    # DRUIDS = get_druids_from_files()
+    DRUIDS = [
+        # "pk349zj4179",
+        # "xy736dn5214",  # 65-note roll from G-C collection!
+        # "jw822wm2644",  # Needs to be flipped left-right
+        # "vj052cw2158",  # Spurious hole detected near top of roll
+        # "vs059bb4318",
+        # "bc072xf6791",
+        # "mf443ns5829",
+        # "wt621xq0875",
+        # "zb497jz4405",
+        # "dj406yq6980",
+        # "pz594dj8436",
+        # "cy287wz7683",
+        # "rx870zt5437",
+        # "fv104hn7521",
+        # "xy736dn5214",
+        # "fv104hn7521",
+        # "fy803vj4057",
+        # "ym773gh2267",
+        # "ym420hv4366",
+    ]
+
+    if len(DRUIDS) == 0:
+        DRUIDS = get_druids_from_files()
 
     catalog_entries = []
 

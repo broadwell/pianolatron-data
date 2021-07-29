@@ -12,7 +12,9 @@ from mido import MidiFile
 
 RECOMPUTE_STATS = True
 
-SUMMARIZE_ALL = False
+SUMMARIZE_ALL = True
+
+PLOT_DISTRIBUTIONS = True
 
 
 def get_midi_hole_events(midi_filepath):
@@ -89,10 +91,6 @@ def get_inter_note_distances(note_events_report, druid):
                     f"NON-NOTE EVENT! {event[1]} at {event[0]} ticks for note {note}"
                 )
 
-    logging.info(
-        f"For roll {druid}, found {len(inter_note_distances)} inter-note distances"
-    )
-
     return inter_note_distances, hole_diameters
 
 
@@ -108,50 +106,9 @@ def get_inter_note_stats(druid):
 
     note_events_report = get_midi_hole_events(midi_filepath)
 
-    logging.info(
-        f"For roll {druid}, found {note_events_report['total_notes']} total holes"
-    )
-
     inter_note_distances, hole_diameters = get_inter_note_distances(
         note_events_report, druid
     )
-
-    dist_bins = {}
-    for dist in inter_note_distances:
-        if dist in dist_bins:
-            dist_bins[dist] += 1
-        else:
-            dist_bins[dist] = 1
-
-    dist_x = [key for key in sorted(dist_bins)]
-    dist_y = [dist_bins[dist] for dist in dist_x]
-
-    dist_series = []
-    for x in range(0, max(inter_note_distances)):
-        if x in dist_bins:
-            dist_series.append(dist_bins[x])
-        else:
-            dist_series.append(0)
-
-    plt.yscale("log")
-    plt.plot(dist_x[:100], dist_y[:100], "ro")
-    plt.title("Inter-hole distances for " + druid)
-    plt.xlabel("Distance between holes in pixels")
-    plt.ylabel("Occurrences of distance value")
-    plt.savefig(druid + "_inter_hole_distances.png")
-
-    plt.clf()
-
-    plt.plot(dist_series)
-    plt.yscale("log")
-    plt.xscale("log")
-    plt.title("Inter-hole distances for " + druid + " (log scales)")
-    plt.xlabel("Distance between holes in pixels")
-    plt.ylabel("Occurrences of distance value")
-    plt.savefig(druid + "_distance_series.png")
-
-    logging.info(f"Median hole diameter: {statistics.median(hole_diameters)}")
-    logging.info(f"Mean hole diameter: {statistics.mean(hole_diameters)}")
 
     inter_note_statistics = {}
     inter_note_statistics["median_inter_note_distance"] = statistics.median(
@@ -163,9 +120,60 @@ def get_inter_note_stats(druid):
     inter_note_statistics["inter_note_distance_stdev"] = statistics.stdev(
         inter_note_distances
     )
-    inter_note_statistics[
-        "inter_note_distance_multimode"
-    ] = statistics.multimode(inter_note_distances)
+    inter_note_statistics["inter_note_distance_mode"] = statistics.mode(
+        inter_note_distances
+    )
+
+    inter_note_statistics["hole_length_median"] = statistics.median(
+        hole_diameters
+    )
+    inter_note_statistics["hole_length_mean"] = statistics.mean(hole_diameters)
+
+    if (
+        inter_note_statistics["hole_length_median"]
+        < inter_note_statistics["median_inter_note_distance"]
+    ):
+        logging.info(
+            f"{druid} hole length median: {inter_note_statistics['hole_length_median']}, median inter-hole distance: {inter_note_statistics['median_inter_note_distance']}, mode: {inter_note_statistics['inter_note_distance_mode']}"
+        )
+
+        if PLOT_DISTRIBUTIONS:
+
+            dist_bins = {}
+            for dist in inter_note_distances:
+                if dist in dist_bins:
+                    dist_bins[dist] += 1
+                else:
+                    dist_bins[dist] = 1
+
+            dist_x = [key for key in sorted(dist_bins)]
+            dist_y = [dist_bins[dist] for dist in dist_x]
+
+            dist_series = []
+            for x in range(0, max(inter_note_distances)):
+                if x in dist_bins:
+                    dist_series.append(dist_bins[x])
+                else:
+                    dist_series.append(0)
+
+            # plt.yscale("log")
+            # plt.plot(dist_x[:100], dist_y[:100], "ro")
+            # plt.title("Inter-hole distances for " + druid)
+            # plt.xlabel("Distance between holes in pixels")
+            # plt.ylabel("Occurrences of distance value")
+            # plt.savefig("plots/" + druid + "_inter_hole_distances.png")
+
+            # plt.clf()
+
+            plt.plot(dist_series[:200])
+            # plt.yscale("log")
+            # plt.xscale("log")
+            plt.title("Inter-hole distances for " + druid + " (log scales)")
+            plt.xlabel("Distance between holes in pixels")
+            plt.ylabel("Occurrences of distance value")
+            plt.savefig("plots/" + druid + "_distance_series.png")
+
+            plt.clf()
 
     # logging.info(f"{druid}\n{note_on_statistics}")
 
@@ -192,9 +200,9 @@ def main():
 
         inter_note_stats = get_inter_note_stats(druid)
 
-        logging.info(
-            f"For roll {druid}, inter-note statistics are {inter_note_stats}"
-        )
+        # logging.info(
+        #     f"{druid} inter-note distance median: {inter_note_stats['median_inter_note_distance']}, mode: {inter_note_stats['inter_note_distance_mode']}, mean: {inter_note_stats['mean_inter_note_distance']:.4f})"
+        # )
 
         all_inter_note_stats.append(inter_note_stats)
 
@@ -209,8 +217,6 @@ def main():
 
         # midi_file = MidiFile(midi_filepath)
         # duration = midi_file.length
-
-        exit()
 
     logging.info(
         f"median of all inter-note distances: {statistics.median(all_inter_note_distances)}"

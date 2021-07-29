@@ -129,6 +129,9 @@ def main():
 
     all_note_on_distances = []
 
+    all_durations = []
+    druids_by_duration = {}
+
     for note_midi_filepath in Path("midi/note/").glob("*_note.mid"):
         druid = note_midi_filepath.stem.split("_")[0]
 
@@ -142,6 +145,14 @@ def main():
             )
             note_on_distances = get_note_on_distances(note_events_report, druid)
             all_note_on_distances.extend(note_on_distances)
+
+        midi_file = MidiFile(note_midi_filepath)
+        duration = midi_file.length
+        all_durations.append(duration)
+        if duration in druids_by_duration:
+            druids_by_duration[str(duration)].append(druid)
+        else:
+            druids_by_duration[str(duration)] = [druid]
 
     logging.info(
         f"median of all note on distances: {statistics.median(all_note_on_distances)}"
@@ -178,6 +189,19 @@ def main():
     )
     logging.info(
         f"stdev of all note on distance stdevs: {statistics.stdev(all_note_on_stdevs)}"
+    )
+
+    logging.info(f"mean of durations: {statistics.mean(all_durations)}")
+    logging.info(f"median of durations: {statistics.median(all_durations)}")
+    logging.info(f"stdev of durations: {statistics.stdev(all_durations)}")
+
+    shortest_duration = min(all_durations)
+    logging.info(
+        f"shortest duration: {shortest_duration} - {' '.join(druids_by_duration[str(shortest_duration)])}"
+    )
+    longest_duration = max(all_durations)
+    logging.info(
+        f"longest duration: {longest_duration} - {' '.join(druids_by_duration[str(longest_duration)])}"
     )
 
 

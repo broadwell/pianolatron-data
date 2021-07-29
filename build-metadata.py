@@ -29,7 +29,17 @@ WRITE_TEMPO_MAPS = False
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
-ROLLS_TO_MIRROR = []  # ["jw822wm2644", "fv104hn7521", "fy803vj4057"]
+ROLLS_TO_MIRROR = [
+    # "mx460bt7026",
+    # "cs175wr2428",
+    # "bz327kz4744",
+    # "wv912mm2332",
+    # "jw822wm2644",
+    # "fv104hn7521",
+    # "fy803vj4057",
+]
+
+DISREGARD_REWIND_HOLE = ["cd381jt9273"]
 
 DUPLICATES_TO_SKIP = ["rr052wh1991"]
 
@@ -96,6 +106,12 @@ def get_metadata_for_druid(druid):
         ),
         "label": get_value_by_xpath(
             "x:identifier[@type='issue number']/text()"
+        ),
+        "publisher": get_value_by_xpath(
+            "x:identifier[@type='publisher']/text()"
+        ),
+        "number": get_value_by_xpath(
+            "x:identifier[@type='publisher number']/text()"
         ),
         # "responsibility": get_value_by_xpath(
         #    "x:note[@type='statement of responsibility']/text()"
@@ -173,7 +189,8 @@ def merge_midi_velocities(roll_data, hole_data, druid):
         for event in note_track:
             current_tick += event.time
             if event.type == "note_on":
-                if event.velocity != 0:
+                # XXX Not sure why some events have velocity=0
+                if event.velocity > 1:
                     if current_tick in tick_notes_velocities:
                         tick_notes_velocities[current_tick][
                             event.note
@@ -330,12 +347,17 @@ def parse_roll_image(druid, image_filepath, roll_type):
         or Path(f"txt/{druid}.txt").exists()
     ):
         return
+
     if roll_type == "welte-red":
         t2h_switches = "-m -r"
     elif roll_type == "88-note":
         t2h_switches = "-m -8"
     elif roll_type == "65-note":
         t2h_switches = "-m -5"
+
+    if druid in DISREGARD_REWIND_HOLE:
+        t2h_switches += " -s"
+
     # XXX Is it helpful to save analysis stderr output to a file (2> logs/{druid}.err)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> logs/{druid}.err"
     logging.info(
@@ -399,6 +421,8 @@ def merge_iiif_metadata(metadata, iiif_manifest):
     composer = None
     performer = None
     description = None
+    publisher = None
+    number = None
 
     for item in iiif_manifest["metadata"]:
         if item["label"] == "Contributor":
@@ -406,11 +430,24 @@ def merge_iiif_metadata(metadata, iiif_manifest):
                 composer = item["value"].split("(")[0].strip()
             if item["value"].find("instrumentalist") != -1:
                 performer = item["value"].split("(")[0].strip()
+        elif item["label"] == "Publisher":
+            publisher = item["value"].strip()
+        elif item["label"] == "Identifier":
+            number = item["value"].strip()
 
     if metadata["composer"] is not None:
         composer = metadata["composer"]
     if metadata["performer"] is not None:
         performer = metadata["performer"]
+
+    if metadata["label"] is None:
+        if metadata["publisher"] is not None:
+            publisher = metadata["publisher"]
+        if metadata["number"] is not None:
+            number = metadata["number"]
+        elif number is None:
+            number = "----"
+        metadata["label"] = number + " " + publisher
 
     # if composer is not None:
     #    composer = composer.split(",")[0].strip()
@@ -474,6 +511,11 @@ def main():
         # "fy803vj4057",
         # "ym773gh2267",
         # "ym420hv4366",
+        # "cd381jt9273",
+        # "mx460bt7026",
+        # "cs175wr2428",
+        # "bz327kz4744",
+        # "wv912mm2332",
     ]
 
     if len(DRUIDS) == 0:

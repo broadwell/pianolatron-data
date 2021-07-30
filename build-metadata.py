@@ -22,9 +22,9 @@ from mido import MidiFile, tempo2bpm
 Image.MAX_IMAGE_PIXELS = None
 
 BUILD_CATALOG = True
-PROCESS_IMAGE_FILES = True
-EXTRACT_MIDI_FILES = True
-APPLY_MIDI_EXPRESSIONS = True
+PROCESS_IMAGE_FILES = False
+EXTRACT_MIDI_FILES = False
+APPLY_MIDI_EXPRESSIONS = False
 WRITE_TEMPO_MAPS = False
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
@@ -41,7 +41,9 @@ ROLLS_TO_MIRROR = [
 
 DISREGARD_REWIND_HOLE = ["cd381jt9273"]
 
-DUPLICATES_TO_SKIP = ["rr052wh1991"]
+# These are either duplicates of existing rolls, or rolls that are listed in
+# the DRUIDs files but have mysteriously disappeared from the catalog
+ROLLS_TO_SKIP = ["rr052wh1991", "hm136vg1420"]
 
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100).": "welte-red",
@@ -49,6 +51,9 @@ ROLL_TYPES = {
     "Scale: 88n.": "88-note",
     "Scale: 65n.": "65-note",
 }
+
+# Used to determine whether to merge with MIDI velocities.
+REPRODUCING_ROLL_TYPES = ["welte-red", "welte-green", "welte-licensee"]
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
 BINASC_DIR = "../binasc/"
@@ -189,7 +194,7 @@ def merge_midi_velocities(roll_data, hole_data, druid):
         for event in note_track:
             current_tick += event.time
             if event.type == "note_on":
-                # XXX Not sure why some events have velocity=0
+                # XXX Not sure why some events have velocity=1
                 if event.velocity > 1:
                     if current_tick in tick_notes_velocities:
                         tick_notes_velocities[current_tick][
@@ -426,9 +431,9 @@ def merge_iiif_metadata(metadata, iiif_manifest):
 
     for item in iiif_manifest["metadata"]:
         if item["label"] == "Contributor":
-            if item["value"].find("composer") != -1:
+            if item["value"].lower().find("composer") != -1:
                 composer = item["value"].split("(")[0].strip()
-            if item["value"].find("instrumentalist") != -1:
+            if item["value"].lower().find("instrumentalist") != -1:
                 performer = item["value"].split("(")[0].strip()
         elif item["label"] == "Publisher":
             publisher = item["value"].strip()
@@ -525,7 +530,7 @@ def main():
 
     for druid in DRUIDS:
 
-        if druid in DUPLICATES_TO_SKIP:
+        if druid in ROLLS_TO_SKIP:
             continue
 
         metadata = get_metadata_for_druid(druid)
@@ -564,7 +569,8 @@ def main():
 
         roll_data, hole_data = get_hole_data(druid)
         if hole_data:
-            hole_data = merge_midi_velocities(roll_data, hole_data, druid)
+            if metadata["type"] in REPRODUCING_ROLL_TYPES:
+                hole_data = merge_midi_velocities(roll_data, hole_data, druid)
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)
         else:
             metadata["holeData"] = None

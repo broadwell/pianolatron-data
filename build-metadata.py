@@ -22,14 +22,18 @@ from mido import MidiFile, tempo2bpm
 Image.MAX_IMAGE_PIXELS = None
 
 BUILD_CATALOG = True
-PROCESS_IMAGE_FILES = False
-EXTRACT_MIDI_FILES = False
-APPLY_MIDI_EXPRESSIONS = False
+PROCESS_IMAGE_FILES = True
+REPROCESS_MIDI = True
+EXTRACT_MIDI_FILES = True
+APPLY_MIDI_EXPRESSIONS = True
 WRITE_TEMPO_MAPS = False
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
 ROLLS_TO_MIRROR = [
+    # "hs635sh6729"
+    # "zw485gh6070",
+    # "xr682fm1233",
     # "mx460bt7026",
     # "cs175wr2428",
     # "bz327kz4744",
@@ -51,9 +55,6 @@ ROLL_TYPES = {
     "Scale: 88n.": "88-note",
     "Scale: 65n.": "65-note",
 }
-
-# Used to determine whether to merge with MIDI velocities.
-REPRODUCING_ROLL_TYPES = ["welte-red", "welte-green", "welte-licensee"]
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
 BINASC_DIR = "../binasc/"
@@ -99,7 +100,7 @@ def get_metadata_for_druid(druid):
         if note is not None and note.text in ROLL_TYPES:
             roll_type = ROLL_TYPES[note.text]
 
-    return {
+    metadata = {
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
         "composer": get_value_by_xpath(
             "x:name[descendant::x:roleTerm[text()='composer']]/"
@@ -124,6 +125,13 @@ def get_metadata_for_druid(druid):
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
+
+    if metadata["publisher"] is None:
+        metadata["publisher"] = get_value_by_xpath(
+            "x:originInfo[@eventType='publication']/publisher/text()"
+        )
+
+    return metadata
 
 
 def get_iiif_manifest(druid):
@@ -228,7 +236,20 @@ def get_hole_data(druid):
     if not txt_filepath.exists():
         return None, None
 
-    needed_keys = [
+    roll_keys = [
+        "AVG_HOLE_WIDTH",
+        "FIRST_HOLE",
+        # "TRACKER_HOLES",
+        "IMAGE_WIDTH",
+        "IMAGE_LENGTH",
+        # "ROLL_WIDTH",
+        # "HARD_MARGIN_BASS",
+        # "HARD_MARGIN_TREBLE",
+        # "HOLE_SEPARATION",
+        # "HOLE_OFFSET",
+    ]
+
+    hole_keys = [
         "NOTE_ATTACK",
         "WIDTH_COL",
         "ORIGIN_COL",
@@ -247,14 +268,15 @@ def get_hole_data(druid):
         while (line := _fh.readline()) and line != "@@BEGIN: HOLES\n":
             if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
                 key, value = match.groups()
-                roll_data[key] = value
+                if key in roll_keys:
+                    roll_data[key] = value.replace("px", "").strip()
 
         while (line := _fh.readline()) and line != "@@END: HOLES\n":
             if line == "@@BEGIN: HOLE\n":
                 hole = {}
             if match := re.match(r"^@([^@\s]+):\s+(.*)", line):
                 key, value = match.groups()
-                if key in needed_keys:
+                if key in hole_keys:
                     hole[key] = int(value.removesuffix("px"))
             if line == "@@END: HOLE\n":
 
@@ -368,7 +390,6 @@ def parse_roll_image(druid, image_filepath, roll_type):
     logging.info(
         f"Running image parser on {druid} {image_filepath} {roll_type}"
     )
-    # logging.info(cmd)
     system(cmd)
 
 
@@ -384,7 +405,7 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
 def extract_midi_from_analysis(druid):
     if not Path(f"txt/{druid}.txt").exists():
         return
-    if Path(f"midi/{druid}.mid").exists():
+    if (not REPROCESS_MIDI) and Path(f"midi/{druid}.mid").exists():
         return
     logging.info(f"Extracting MIDI from txt/{druid}.txt")
     with open(f"txt/{druid}.txt", "r") as analysis:
@@ -435,22 +456,34 @@ def merge_iiif_metadata(metadata, iiif_manifest):
                 composer = item["value"].split("(")[0].strip()
             if item["value"].lower().find("instrumentalist") != -1:
                 performer = item["value"].split("(")[0].strip()
+            # This is usually more verbose than the value from the MODS
+            # or from the first-level "Publisher" key below
+            # if item["value"].lower().find("publisher") != -1:
+            #    publisher = item["value"].split("(")[0].strip()
         elif item["label"] == "Publisher":
             publisher = item["value"].strip()
-        elif item["label"] == "Identifier":
-            number = item["value"].strip()
+        # There can be multiple types of Identifier that are not
+        # disambiguatd
+        # elif item["label"] == "Identifier":
+        #    number = item["value"].strip()
 
     if metadata["composer"] is not None:
         composer = metadata["composer"]
     if metadata["performer"] is not None:
         performer = metadata["performer"]
+    if metadata["publisher"] is not None:
+        publisher = metadata["publisher"]
+    if metadata["number"] is not None:
+        number = metadata["number"]
+    else:
+        if (
+            metadata["label"] is not None
+            and len(metadata["label"].split(" ")) == 2
+        ):
+            number = metadata["label"].split(" ")[0]
 
     if metadata["label"] is None:
-        if metadata["publisher"] is not None:
-            publisher = metadata["publisher"]
-        if metadata["number"] is not None:
-            number = metadata["number"]
-        elif number is None:
+        if number is None:
             number = "----"
         metadata["label"] = number + " " + publisher
 
@@ -487,6 +520,8 @@ def merge_iiif_metadata(metadata, iiif_manifest):
     metadata["composer"] = composer
     metadata["performer"] = performer
     metadata["title"] = description
+    metadata["publisher"] = publisher
+    metadata["number"] = number
 
     return metadata
 
@@ -497,6 +532,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     DRUIDS = [
+        # "hs635sh6729",
+        # "zw485gh6070",
         # "pk349zj4179",
         # "xy736dn5214",  # 65-note roll from G-C collection!
         # "jw822wm2644",  # Needs to be flipped left-right
@@ -521,6 +558,7 @@ def main():
         # "cs175wr2428",
         # "bz327kz4744",
         # "wv912mm2332",
+        # "xr682fm1233",
     ]
 
     if len(DRUIDS) == 0:
@@ -568,14 +606,18 @@ def main():
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
 
         roll_data, hole_data = get_hole_data(druid)
+
+        metadata = merge_iiif_metadata(metadata, iiif_manifest)
+
+        for key in roll_data:
+            metadata[key] = roll_data[key]
+
         if hole_data:
-            if metadata["type"] in REPRODUCING_ROLL_TYPES:
+            if metadata["type"] != "65-note":
                 hole_data = merge_midi_velocities(roll_data, hole_data, druid)
             metadata["holeData"] = remap_hole_data(roll_data, hole_data)
         else:
             metadata["holeData"] = None
-
-        metadata = merge_iiif_metadata(metadata, iiif_manifest)
 
         write_json(druid, metadata)
 

@@ -21,7 +21,7 @@ from mido import MidiFile, tempo2bpm
 # Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
 Image.MAX_IMAGE_PIXELS = None
 
-BUILD_CATALOG = True
+BUILD_CATALOG = False
 PROCESS_IMAGE_FILES = True
 REPROCESS_MIDI = True
 EXTRACT_MIDI_FILES = True
@@ -43,7 +43,7 @@ ROLLS_TO_MIRROR = [
     # "fy803vj4057",
 ]
 
-DISREGARD_REWIND_HOLE = ["cd381jt9273"]
+DISREGARD_REWIND_HOLE = ["mh156nr8259", "cd381jt9273"]
 
 # These are either duplicates of existing rolls, or rolls that are listed in
 # the DRUIDs files but have mysteriously disappeared from the catalog
@@ -532,6 +532,8 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     DRUIDS = [
+        # "mh156nr8259",
+        # "jx095ty1753",
         # "hs635sh6729",
         # "zw485gh6070",
         # "pk349zj4179",
@@ -601,6 +603,9 @@ def main():
                     Path(f"midi/note/{druid}_note.mid"),
                     Path(f"midi/{druid}.mid"),
                 )
+
+        note_midi = MidiFile(Path(f"midi/note/{druid}_note.mid"))
+        metadata["NOTE_MIDI_TPQ"] = note_midi.ticks_per_beat
 
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)

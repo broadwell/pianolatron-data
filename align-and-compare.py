@@ -19,14 +19,15 @@ import statistics
 EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
 
 # The unaccelerated note MIDI file for the roll
+unaccel = None
 # unaccel = "red/mw870hc7232_no_accel-note.mid"
 # unaccel = "green/11381959_no_accel-exp.mid"
-unaccel = "green/11381959_no_accel-exp.mp3"
+# unaccel = "red/kv550vj8954_note.mid"
 # unaccel = "green/11373080_no_accel-note.mid"
 
 # A MIDI file generated from the same roll, with acceleration
 # accel = "red/Symphony 2-2,3 (Bthvn), Kiek RW.mid"
-accel = "green_figaro_mp3/JH493UyQ70E_NAXOS_Schmitz.mp3"
+accel = "red/zk440mh1715_Hungarian_Rhapsody_2_Loehr.mid"
 # accel = "green_figaro_mp3/UqinWTyQTKM_Julian_Dyer.mp3"
 # accel = "green/11381959-exp-tempo72.mp3"
 # accel = "green_figaro_mp3/Eipy7tcMUb4_Orchard_Bringins.mp3"
@@ -38,15 +39,21 @@ unaccel_tps = 433  # Needs to be set if non-accelerated input is an audio file
 # Number of audio samples per "window" for various time-series analyses
 hop_length = 1024
 
+subdir = accel.split("/")[0]
+
+if unaccel is None:
+    unaccel = accel.split("_")[0] + "_note.mid"
+
 # Used to differentiate multiple comparisons of the same roll ID
-roll_tag = "schmitz_audio"
+roll_tag = "philips_midi"
 # Used for all output filenames
 roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
 # Used in visualization plots
-roll_title = "Liszt/Busoni Horowitz Figaro Fantasy WM 4128"
+roll_title = accel.split("/")[-1].replace("_", " ")
+# roll_title = "Liszt/Busoni Horowitz Figaro Fantasy WM 4128"
 # roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 WM 3156"
 # roll_title = "Liszt/Gieseking Hungarian Rhapsody 14 WM 3829"
-source = "Schmitz (audio)"
+source = "Philips (MIDI)"
 
 viz_chroma = True
 
@@ -100,6 +107,7 @@ def get_midi_timings(
     logging.info(f"Ticks per beat: {tpb}")
 
     if len(midifile.tracks) > 3:
+        # This should work for note MIDI (notes on tracks 1 and 2)
         unitrack = mido.merge_tracks(midifile.tracks[:3])
     else:
         unitrack = mido.merge_tracks(midifile.tracks)
@@ -108,6 +116,8 @@ def get_midi_timings(
 
     current_tick = 0
     total_notes = 0
+    notes_on = 0
+    notes_off = 0
     current_tempo = 0.0  # In microseconds per beat
     current_tempo_start_tick = 0
     seconds_before_current_tempo = 0.0
@@ -145,6 +155,11 @@ def get_midi_timings(
         if event.type == "note_on":
             total_notes += 1
 
+            if event.velocity == 0:
+                notes_off += 1
+                continue
+            notes_on += 1
+
             ticks_at_this_tempo = current_tick - current_tempo_start_tick
 
             event_time_in_seconds = (
@@ -165,7 +180,9 @@ def get_midi_timings(
                 )
             )
 
-    logging.info(f"Total note_on events: {total_notes}")
+    logging.info(
+        f"Total note events: {total_notes}, note_on {notes_on}, velocity=0 {notes_off}"
+    )
     logging.info(
         f"Last event tick: {current_tick}, last note event time: {event_time_in_seconds:.4f}"
     )
@@ -225,7 +242,7 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
     note_events = []
     current_tick = 0
 
-    chroma_values_file = open("chroma_values.txt", "w")
+    chroma_values_file = open(subdir + "/chroma_values.txt", "w")
 
     chroma_values_file.write(
         "Time   C     C#    D     D#    E     F     F#    G     G#    A     A#    B\n"
@@ -334,26 +351,28 @@ def compute_acceleration_by_matches(
 
 def visualize_observed_velocities(accel_t, accel_v):
 
+    # XXX The first acceleration value (acceleration over the first foot)
+    # is removed from the linear regression because it's always way low
+    # (need to figure out why) and skews the fit
+
     # Basic distribution stats
-    median_v = statistics.median(accel_v)
-    mean_v = statistics.mean(accel_v)
-    trimmed_mean_v = trim_mean(accel_v, 0.25)
-    stdev_v = statistics.stdev(accel_v)
+    median_v = statistics.median(accel_v[1:])
+    mean_v = statistics.mean(accel_v[1:])
+    trimmed_mean_v = trim_mean(accel_v[1:], 0.25)
+    stdev_v = statistics.stdev(accel_v[1:])
     logging.info(
         f"Median velocity: {median_v:.4f}, mean: {mean_v:.4f}, trimmed mean: {trimmed_mean_v:.4f} stdev: {stdev_v:.4f}"
     )
 
     # Mostly useless average acceleration number
-    acceleration = (accel_v[-1] - accel_v[1]) / ((accel_t[-1] - accel_t[1]))
-    logging.info(f"Average acceleration since ft 1: {acceleration:.4f}ft/m^2")
+    acceleration = (accel_v[-1] - accel_v[2]) / ((accel_t[-1] - accel_t[2]))
+    logging.info(f"Average acceleration since ft 2: {acceleration:.4f}ft/m^2")
 
     # Kalman filter!
     kalman_filter = KalmanFilter(dim_x=2, dim_z=1)
 
-    filtered_values = []
-
     kalman_filter.x = np.array(
-        [[0], [accel_v[0]]]
+        [[0], [accel_v[1]]]
     )  # initial state (location and velocity)
 
     kalman_filter.F = np.array(
@@ -367,9 +386,9 @@ def visualize_observed_velocities(accel_t, accel_v):
         dim=2, dt=0.1, var=0.1
     )  # process uncertainty
 
-    smoothed_v = [accel_v[0]]
+    smoothed_v = [accel_v[1]]
 
-    for i in range(1, len(accel_v)):
+    for i in range(2, len(accel_v)):
         kalman_filter.predict()
         kalman_filter.update(accel_v[i])
 
@@ -377,29 +396,36 @@ def visualize_observed_velocities(accel_t, accel_v):
 
         smoothed_v.append(x[0])
 
-        logging.info(
-            f"Kalman filter value at time {accel_t[i]}, velocity {accel_v[i]}: {x}"
-        )
+        # logging.info(
+        #     f"Kalman filter value at time {accel_t[i]}, velocity {accel_v[i]}: {x}"
+        # )
 
-    raw_regression = linregress(accel_t, accel_v)
+    raw_regression = linregress(accel_t[1:], accel_v[1:])
     logging.info(f"Results of linear regression on raw velocity samples:")
     logging.info(f"Acceleration: {raw_regression.slope:.4f} ft/min^2")
     logging.info(f"Initial velocity: {raw_regression.intercept:.4f} ft/min")
 
-    regression = linregress(accel_t, smoothed_v)
+    regression = linregress(accel_t[1:], smoothed_v)
     logging.info(f"Results of linear regression on smoothed velocity samples:")
     logging.info(f"Acceleration: {regression.slope:.4f} ft/min^2")
     logging.info(f"Initial velocity: {regression.intercept:.4f} ft/min")
 
-    coef = np.polyfit(accel_t, accel_v, 1)
+    coef = np.polyfit(accel_t[1:], accel_v[1:], 1)
     poly1d_fn = np.poly1d(coef)
-    plt.plot(accel_t, accel_v, "co", accel_t, poly1d_fn(accel_t), "--k")
+    plt.plot(accel_t, accel_v, "co", accel_t[1:], poly1d_fn(accel_t[1:]), "--k")
     plt.xlim(0, int(max(accel_t) + 1))
     plt.ylim(int(min(accel_v)), int(max(accel_v)) + 1)
 
-    coef = np.polyfit(accel_t, smoothed_v, 1)
+    coef = np.polyfit(accel_t[1:], smoothed_v, 1)
     poly1d_fn = np.poly1d(coef)
-    plt.plot(accel_t, smoothed_v, "r+", accel_t, poly1d_fn(accel_t), "--r")
+    plt.plot(
+        accel_t[1:],
+        smoothed_v,
+        "r+",
+        accel_t[1:],
+        poly1d_fn(accel_t[1:]),
+        "--r",
+    )
 
     plt.title(roll_title + " - " + source)
     plt.xlabel("minutes")
@@ -413,7 +439,7 @@ def visualize_observed_velocities(accel_t, accel_v):
         ]
     )
 
-    plt.savefig(roll_id + "_acceleration.png")
+    plt.savefig(subdir + "/" + roll_id + "_acceleration.png")
     plt.clf()
 
 
@@ -466,7 +492,7 @@ def main():
 
             fig.colorbar(img, ax=ax)
 
-            plt.savefig(roll_id + "_chroma_comparison.png")
+            plt.savefig(subdir + "/" + roll_id + "_chroma_comparison.png")
             plt.clf()
 
         if Path(roll_id + "_dtw.p").exists():
@@ -477,7 +503,7 @@ def main():
                 accel_duration,
                 unaccel_total_samples,
                 accel_total_samples,
-            ) = pickle.load(open(Path(roll_id + "_dtw.p"), "rb"))
+            ) = pickle.load(open(Path(subdir + "/" + roll_id + "_dtw.p"), "rb"))
         else:
             logging.info("Running dynamic time-warp matching")
             D, wp = librosa.sequence.dtw(
@@ -492,7 +518,7 @@ def main():
                     unaccel_total_samples,
                     accel_total_samples,
                 ],
-                open(Path(roll_id + "_dtw.p"), "wb"),
+                open(Path(subdir + "/" + roll_id + "_dtw.p"), "wb"),
             )
 
         wp_s = np.asarray(wp) * hop_length / unaccel_fs
@@ -516,7 +542,7 @@ def main():
             )
             fig.colorbar(img, ax=ax)
 
-            plt.savefig(roll_id + "_chroma_warping_path.png")
+            plt.savefig(subdir + "/" + roll_id + "_chroma_warping_path.png")
             plt.clf()
 
             from matplotlib.patches import ConnectionPatch
@@ -554,7 +580,9 @@ def main():
                 )
                 ax2.add_artist(con)
 
-            plt.savefig(roll_id + "_chroma_time_correspondences.png")
+            plt.savefig(
+                sbudir + "/" + roll_id + "_chroma_time_correspondences.png"
+            )
             plt.clf()
 
         logging.info(f"Shape of warping path: {wp.shape}")
@@ -570,7 +598,7 @@ def main():
         last_unaccel_stride = 0
         last_accel_stride = 0
 
-        wp_file = open(roll_id + "_warping.txt", "w")
+        wp_file = open(subdir + "/" + roll_id + "_warping.txt", "w")
 
         for x in range(wp.shape[0] - 1, 0, -1):
             unaccel_stride, accel_stride = wp[x]
@@ -650,7 +678,7 @@ def main():
         )
         return
 
-    alignment_fn = roll_id + "_alignment.p"
+    alignment_fn = subdir + "/" + roll_id + "_alignment.p"
 
     # The pickled alignment data is just the two sequences
     if Path(f"{alignment_fn}").exists():
@@ -673,16 +701,16 @@ def main():
     accel_counter = 0
 
     logging.info(
-        f"total unmatched notes in unaccelerated file: {unaccel_seq.count('-')}"
+        f"total unmatched notes in unaccelerated file: {unaccel_seq.count('-')} out of {len(unaccel_seq)}"
     )
     logging.info(
-        f"total unmatched notes in accelerated file: {accel_seq.count('-')}"
+        f"total unmatched notes in accelerated file: {accel_seq.count('-')} out of {len(accel_seq)}"
     )
 
     # Accumulate data about matched MIDI messages between the sequences
     matched_events_by_unaccel_ticks = {}
 
-    misalignment_file = open(roll_id + "_midi_mismatches.txt", "w")
+    misalignment_file = open(subdir + "/" + roll_id + "_mismatches.txt", "w")
 
     for i, unaccel_item in enumerate(unaccel_seq):
 

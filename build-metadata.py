@@ -21,16 +21,17 @@ from mido import MidiFile, tempo2bpm
 # Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
 Image.MAX_IMAGE_PIXELS = None
 
-BUILD_CATALOG = False
-PROCESS_IMAGE_FILES = True
-REPROCESS_MIDI = True
-EXTRACT_MIDI_FILES = True
-APPLY_MIDI_EXPRESSIONS = True
+BUILD_CATALOG = True
+PROCESS_IMAGE_FILES = False
+REPROCESS_MIDI = False
+EXTRACT_MIDI_FILES = False
+APPLY_MIDI_EXPRESSIONS = False
 WRITE_TEMPO_MAPS = False
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
 ROLLS_TO_MIRROR = [
+    # "ws749sk4778",
     # "hs635sh6729"
     # "zw485gh6070",
     # "xr682fm1233",
@@ -43,7 +44,10 @@ ROLLS_TO_MIRROR = [
     # "fy803vj4057",
 ]
 
-DISREGARD_REWIND_HOLE = ["mh156nr8259", "cd381jt9273"]
+DISREGARD_REWIND_HOLE = [
+    "mh156nr8259",
+    "cd381jt9273",
+]
 
 # These are either duplicates of existing rolls, or rolls that are listed in
 # the DRUIDs files but have mysteriously disappeared from the catalog
@@ -104,11 +108,19 @@ def get_metadata_for_druid(druid):
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
         "composer": get_value_by_xpath(
             "x:name[descendant::x:roleTerm[text()='composer']]/"
-            "x:namePart[not(@type='date')]/text()",
+            "x:namePart[not(@type='date')]/text()"
         ),
         "performer": get_value_by_xpath(
             "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
-            "x:namePart[not(@type='date')]/text()",
+            "x:namePart[not(@type='date')]/text()"
+        ),
+        "arranger": get_value_by_xpath(
+            "x:name[descendant::x:roleTerm[text()='arranger of music']]/"
+            "x:namePart[not(@type='date')]/text()"
+        ),
+        "original_composer": get_value_by_xpath(
+            "x:relatedItem[@otherType='Based on (work) :']/"
+            "x:name[@type='personal']/x:namePart[not(@type='date')]/text()"
         ),
         "label": get_value_by_xpath(
             "x:identifier[@type='issue number']/text()"
@@ -119,6 +131,10 @@ def get_metadata_for_druid(druid):
         "number": get_value_by_xpath(
             "x:identifier[@type='publisher number']/text()"
         ),
+        "publish_date": get_value_by_xpath(
+            "x:originInfo[@eventType='publication']/x:dateIssued/text()"
+        ),
+        "recording_date": get_value_by_xpath("x:note[@type='venue']/text()"),
         # "responsibility": get_value_by_xpath(
         #    "x:note[@type='statement of responsibility']/text()"
         # ),
@@ -434,7 +450,7 @@ def apply_midi_expressions(druid, roll_type):
     # There's a switch, -r, to remove the control tracks (3-4(5))
     m2e_switches = ""
     if roll_type == "welte-red":
-        m2e_switches = "-w -r"
+        m2e_switches = "-w -r -adjust-hole-lengths --ac 0"
     cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/note/{druid}_note.mid midi/exp/{druid}_exp.mid"
     logging.info(f"Running expression extraction on midi/note/{druid}_note.mid")
     system(cmd)
@@ -446,6 +462,7 @@ def merge_iiif_metadata(metadata, iiif_manifest):
     # this may not always be the available.
     composer = None
     performer = None
+    arranger = None
     description = None
     publisher = None
     number = None
@@ -456,6 +473,8 @@ def merge_iiif_metadata(metadata, iiif_manifest):
                 composer = item["value"].split("(")[0].strip()
             if item["value"].lower().find("instrumentalist") != -1:
                 performer = item["value"].split("(")[0].strip()
+            if item["value"].lower().find("arranger of music") != -1:
+                arranger = item["value"].split("(")[0].strip()
             # This is usually more verbose than the value from the MODS
             # or from the first-level "Publisher" key below
             # if item["value"].lower().find("publisher") != -1:
@@ -471,6 +490,8 @@ def merge_iiif_metadata(metadata, iiif_manifest):
         composer = metadata["composer"]
     if metadata["performer"] is not None:
         performer = metadata["performer"]
+    if metadata["arranger"] is not None:
+        arranger = metadata["arranger"]
     if metadata["publisher"] is not None:
         publisher = metadata["publisher"]
     if metadata["number"] is not None:
@@ -487,27 +508,24 @@ def merge_iiif_metadata(metadata, iiif_manifest):
             number = "----"
         metadata["label"] = number + " " + publisher
 
-    # if composer is not None:
-    #    composer = composer.split(",")[0].strip()
+    original_composer = metadata["original_composer"]
+    # publish_date = metadata["publish_date"]
+    # recording_date = metadata["recording_date"]
 
-    # It might be preferable to use the "Statement of Responsiblity" instead of
-    # combining the composer and performer surnames, because it is more likely
-    # to provide better composer/arranger information, e.g., "Wagner-Brassin".
-    # Practically, however, this content has a wide range of formats --
-    # parentheticals and semicolons abound -- and also uses different and
-    # inconsistent name spelling conversations relative to the rest of the
-    # metadata, so on the whole it probably should not be used.
-    # if metadata["responsibility"]:
-    #    composer = metadata["responsibility"].lstrip().rstrip(" .,")
-
-    if composer is not None:
+    if original_composer is not None and composer is not None:
+        description = f"{original_composer.split(',')[0].strip()}-{composer.split(',')[0].strip()}"
+    elif composer is not None:
         description = composer.split(",")[0].strip()
 
-    if performer is not None:
-        if description is not None:
-            description += "/" + performer.split(",")[0].strip()
-        else:
-            description = performer.split(",")[0].strip()
+    if arranger is not None and description is not None:
+        description += f"-{arranger.split(',')[0].strip()}"
+    elif arranger is not None:
+        description = arranger.split(",")[0].strip()
+
+    if performer is not None and description is not None:
+        description += "/" + performer.split(",")[0].strip()
+    elif performer is not None:
+        description = performer.split(",")[0].strip()
 
     # The IIIF manifest has already concocted a title from the MODS
     title = iiif_manifest["label"].replace(" : ", ": ").strip().capitalize()
@@ -517,9 +535,11 @@ def merge_iiif_metadata(metadata, iiif_manifest):
     else:
         description = title
 
+    # Update the values that may have been changed above during the merge
+    metadata["title"] = description
     metadata["composer"] = composer
     metadata["performer"] = performer
-    metadata["title"] = description
+    metadata["arranger"] = arranger
     metadata["publisher"] = publisher
     metadata["number"] = number
 
@@ -532,6 +552,20 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     DRUIDS = [
+        # "kv550vj8954",
+        # "bj606rp8160",
+        # "yx536mq2915",
+        # "qz671pq0609",
+        # "rj799hj0968",
+        # "xx912rs1788",
+        # "zf673fy4620",
+        # "hk155fw7898",
+        # "zw751nw0097",
+        # "pr464zk8674",
+        # "vs880hb3425",
+        # "dw083wh0675",
+        # "zf673fy4620",
+        # "wn516xn5163",
         # "mh156nr8259",
         # "jx095ty1753",
         # "hs635sh6729",
@@ -647,6 +681,7 @@ def main():
                 indent=2,
                 sort_keys=True,
             )
+            catalog_file.write("\n")
 
 
 if __name__ == "__main__":

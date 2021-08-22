@@ -512,12 +512,21 @@ def merge_iiif_metadata(metadata, iiif_manifest):
     # publish_date = metadata["publish_date"]
     # recording_date = metadata["recording_date"]
 
-    if original_composer is not None and composer is not None:
+    if (
+        original_composer is not None
+        and composer is not None
+        and original_composer.split(",")[0].strip()
+        != composer.split(",")[0].strip()
+    ):
         description = f"{original_composer.split(',')[0].strip()}-{composer.split(',')[0].strip()}"
     elif composer is not None:
         description = composer.split(",")[0].strip()
 
-    if arranger is not None and description is not None:
+    if (
+        arranger is not None
+        and description is not None
+        and arranger.split(",")[0].strip() != composer.split(",")[0].strip()
+    ):
         description += f"-{arranger.split(',')[0].strip()}"
     elif arranger is not None:
         description = arranger.split(",")[0].strip()

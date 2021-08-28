@@ -12,25 +12,28 @@ from os import system
 from pathlib import Path
 import re
 from shutil import copy, copyfileobj
+import sys
 
-import requests
 from lxml import etree
-from PIL import Image
 from mido import MidiFile, tempo2bpm
+from PIL import Image
+import requests
 
-# Otherwise Pillow will refuse to open image, thinking it's a DOS attack vector
+# Otherwise Pillow will refuse to open large images
 Image.MAX_IMAGE_PIXELS = None
 
-BUILD_CATALOG = True
-PROCESS_IMAGE_FILES = False
-REPROCESS_MIDI = False
-EXTRACT_MIDI_FILES = False
-APPLY_MIDI_EXPRESSIONS = False
+BUILD_CATALOG = False  # Write a new catalog.json file
+PROCESS_IMAGE_FILES = True  # Download image (if needed) and parse to DRUID.txt
+REPROCESS_IMAGES = False  # Re-parse the image even if a DRUID.txt file exists
+EXTRACT_MIDI_FILES = True  # Extract raw and note MIDI from DRUID.txt output
+REPROCESS_MIDI = True  # Extract MIDI files even if a DRUID.mid file exists
+APPLY_MIDI_EXPRESSIONS = True  # Run midi2exp and use output as DRUID.mid
 WRITE_TEMPO_MAPS = False
 
 # XXX THIS IS NOT IDEMPOTENT -- it will keep flipping the image every time.
 # Rolls should only be listed here for one execution of the script!
 ROLLS_TO_MIRROR = [
+    # "yt837kd6607",
     # "ws749sk4778",
     # "hs635sh6729"
     # "zw485gh6070",
@@ -135,9 +138,6 @@ def get_metadata_for_druid(druid):
             "x:originInfo[@eventType='publication']/x:dateIssued/text()"
         ),
         "recording_date": get_value_by_xpath("x:note[@type='venue']/text()"),
-        # "responsibility": get_value_by_xpath(
-        #    "x:note[@type='statement of responsibility']/text()"
-        # ),
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
@@ -218,7 +218,7 @@ def merge_midi_velocities(roll_data, hole_data, druid):
         for event in note_track:
             current_tick += event.time
             if event.type == "note_on":
-                # XXX Not sure why some events have velocity=1
+                # XXX Not sure why some note events have velocity=1
                 if event.velocity > 1:
                     if current_tick in tick_notes_velocities:
                         tick_notes_velocities[current_tick][
@@ -255,9 +255,9 @@ def get_hole_data(druid):
     roll_keys = [
         "AVG_HOLE_WIDTH",
         "FIRST_HOLE",
-        # "TRACKER_HOLES",
         "IMAGE_WIDTH",
         "IMAGE_LENGTH",
+        # "TRACKER_HOLES",
         # "ROLL_WIDTH",
         # "HARD_MARGIN_BASS",
         # "HARD_MARGIN_TREBLE",
@@ -311,7 +311,7 @@ def get_hole_data(druid):
     return roll_data, hole_data
 
 
-def remap_hole_data(roll_data, hole_data):
+def remap_hole_data(hole_data):
 
     new_hole_data = []
 
@@ -333,7 +333,7 @@ def remap_hole_data(roll_data, hole_data):
     return new_hole_data
 
 
-def write_json(druid, metadata, indent=2):
+def write_json(druid, metadata):
     output_path = Path(f"json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
@@ -387,7 +387,7 @@ def parse_roll_image(druid, image_filepath, roll_type):
         image_filepath is None
         or roll_type == "NA"
         or not Path(f"{ROLL_PARSER_DIR}bin/tiff2holes").exists()
-        or Path(f"txt/{druid}.txt").exists()
+        or (Path(f"txt/{druid}.txt").exists() and not REPROCESS_IMAGES)
     ):
         return
 
@@ -401,7 +401,6 @@ def parse_roll_image(druid, image_filepath, roll_type):
     if druid in DISREGARD_REWIND_HOLE:
         t2h_switches += " -s"
 
-    # XXX Is it helpful to save analysis stderr output to a file (2> logs/{druid}.err)?
     cmd = f"{ROLL_PARSER_DIR}bin/tiff2holes {t2h_switches} {image_filepath} > txt/{druid}.txt 2> logs/{druid}.err"
     logging.info(
         f"Running image parser on {druid} {image_filepath} {roll_type}"
@@ -419,9 +418,9 @@ def convert_binasc_to_midi(binasc_data, druid, midi_type):
 
 
 def extract_midi_from_analysis(druid):
-    if not Path(f"txt/{druid}.txt").exists():
-        return
-    if (not REPROCESS_MIDI) and Path(f"midi/{druid}.mid").exists():
+    if not Path(f"txt/{druid}.txt").exists() or (
+        not REPROCESS_MIDI and Path(f"midi/{druid}.mid").exists()
+    ):
         return
     logging.info(f"Extracting MIDI from txt/{druid}.txt")
     with open(f"txt/{druid}.txt", "r") as analysis:
@@ -447,10 +446,12 @@ def apply_midi_expressions(druid, roll_type):
         or not Path(f"{MIDI2EXP_DIR}bin/midi2exp").exists()
     ):
         return
-    # There's a switch, -r, to remove the control tracks (3-4(5))
+    # There's a switch, -r, to remove the control tracks (3-4, 0-indexed)
     m2e_switches = ""
     if roll_type == "welte-red":
-        m2e_switches = "-w -r -adjust-hole-lengths --ac 0"
+        m2e_switches = (
+            "-w -r -adjust-hole-lengths"  # add --ac 0 for no acceleration
+        )
     cmd = f"{MIDI2EXP_DIR}bin/midi2exp {m2e_switches} midi/note/{druid}_note.mid midi/exp/{druid}_exp.mid"
     logging.info(f"Running expression extraction on midi/note/{druid}_note.mid")
     system(cmd)
@@ -459,7 +460,7 @@ def apply_midi_expressions(druid, roll_type):
 
 def merge_iiif_metadata(metadata, iiif_manifest):
     # Note that the CSV lists of DRUIDs also provide descriptions for each roll, but
-    # this may not always be the available.
+    # these may not always be available.
     composer = None
     performer = None
     arranger = None
@@ -481,10 +482,6 @@ def merge_iiif_metadata(metadata, iiif_manifest):
             #    publisher = item["value"].split("(")[0].strip()
         elif item["label"] == "Publisher":
             publisher = item["value"].strip()
-        # There can be multiple types of Identifier that are not
-        # disambiguatd
-        # elif item["label"] == "Identifier":
-        #    number = item["value"].strip()
 
     if metadata["composer"] is not None:
         composer = metadata["composer"]
@@ -509,8 +506,6 @@ def merge_iiif_metadata(metadata, iiif_manifest):
         metadata["label"] = number + " " + publisher
 
     original_composer = metadata["original_composer"]
-    # publish_date = metadata["publish_date"]
-    # recording_date = metadata["recording_date"]
 
     if (
         original_composer is not None
@@ -560,51 +555,11 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = [
-        # "kv550vj8954",
-        # "bj606rp8160",
-        # "yx536mq2915",
-        # "qz671pq0609",
-        # "rj799hj0968",
-        # "xx912rs1788",
-        # "zf673fy4620",
-        # "hk155fw7898",
-        # "zw751nw0097",
-        # "pr464zk8674",
-        # "vs880hb3425",
-        # "dw083wh0675",
-        # "zf673fy4620",
-        # "wn516xn5163",
-        # "mh156nr8259",
-        # "jx095ty1753",
-        # "hs635sh6729",
-        # "zw485gh6070",
-        # "pk349zj4179",
-        # "xy736dn5214",  # 65-note roll from G-C collection!
-        # "jw822wm2644",  # Needs to be flipped left-right
-        # "vj052cw2158",  # Spurious hole detected near top of roll
-        # "vs059bb4318",
-        # "bc072xf6791",
-        # "mf443ns5829",
-        # "wt621xq0875",
-        # "zb497jz4405",
-        # "dj406yq6980",
-        # "pz594dj8436",
-        # "cy287wz7683",
-        # "rx870zt5437",
-        # "fv104hn7521",
-        # "xy736dn5214",
-        # "fv104hn7521",
-        # "fy803vj4057",
-        # "ym773gh2267",
-        # "ym420hv4366",
-        # "cd381jt9273",
-        # "mx460bt7026",
-        # "cs175wr2428",
-        # "bz327kz4744",
-        # "wv912mm2332",
-        # "xr682fm1233",
-    ]
+    DRUIDS = []
+
+    # Providing a single DRUID on the cmd line overrides the list above
+    if len(sys.argv) > 1:
+        DRUIDS = [sys.argv[1]]
 
     if len(DRUIDS) == 0:
         DRUIDS = get_druids_from_files()
@@ -636,8 +591,11 @@ def main():
             if APPLY_MIDI_EXPRESSIONS:
                 apply_midi_expressions(druid, metadata["type"])
 
-            # Use the expression MIDI if available, otherwise use the notes MIDI
-            if Path(f"midi/exp/{druid}_exp.mid").exists():
+            # Use expression MIDI if there & enabled, otherwise use note MIDI
+            if (
+                APPLY_MIDI_EXPRESSIONS
+                and Path(f"midi/exp/{druid}_exp.mid").exists()
+            ):
                 copy(
                     Path(f"midi/exp/{druid}_exp.mid"), Path(f"midi/{druid}.mid")
                 )
@@ -663,7 +621,7 @@ def main():
         if hole_data:
             if metadata["type"] != "65-note":
                 hole_data = merge_midi_velocities(roll_data, hole_data, druid)
-            metadata["holeData"] = remap_hole_data(roll_data, hole_data)
+            metadata["holeData"] = remap_hole_data(hole_data)
         else:
             metadata["holeData"] = None
 

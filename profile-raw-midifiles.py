@@ -3,7 +3,6 @@
 import json
 import logging
 import matplotlib.pyplot as plt
-import numpy as np
 import operator
 from pathlib import Path
 import statistics
@@ -31,6 +30,11 @@ def get_midi_hole_events(midi_filepath):
     types_seen = set()
     druid = midi_filepath.stem.split("_")[0]
 
+    for event in midi.tracks[0]:
+        # @AVG_HOLE_WIDTH:\t18.31px
+        if event.type == "text" and event.text.find("@AVG_HOLE_WIDTH") >= 0:
+            avg_width = event.text.split("\t")[-1].replace("px", "")
+
     events_by_note = {}
 
     for track in midi.tracks[1:]:
@@ -56,7 +60,11 @@ def get_midi_hole_events(midi_filepath):
             else:
                 events_by_note[event.note] = [[current_tick, event_name]]
 
-    return {"total_notes": total_notes, "events_by_note": events_by_note}
+    return {
+        "avg_hole_width": avg_width,
+        "total_notes": total_notes,
+        "events_by_note": events_by_note,
+    }
 
 
 def get_inter_note_distances(note_events_report, druid):
@@ -129,13 +137,14 @@ def get_inter_note_stats(druid):
     )
     inter_note_statistics["hole_length_mean"] = statistics.mean(hole_diameters)
 
+    logging.info(
+        f"{druid} avg width: {note_events_report['avg_hole_width']}, length median: {inter_note_statistics['hole_length_median']}, median inter-hole distance: {inter_note_statistics['median_inter_note_distance']}, mode: {inter_note_statistics['inter_note_distance_mode']}, mode % of avg width: {(inter_note_statistics['inter_note_distance_mode'] / float(note_events_report['avg_hole_width']) * 100):.2f}"
+    )
+
     if (
         inter_note_statistics["hole_length_median"]
         < inter_note_statistics["median_inter_note_distance"]
     ):
-        logging.info(
-            f"{druid} hole length median: {inter_note_statistics['hole_length_median']}, median inter-hole distance: {inter_note_statistics['median_inter_note_distance']}, mode: {inter_note_statistics['inter_note_distance_mode']}"
-        )
 
         if PLOT_DISTRIBUTIONS:
 
@@ -147,7 +156,7 @@ def get_inter_note_stats(druid):
                     dist_bins[dist] = 1
 
             dist_x = [key for key in sorted(dist_bins)]
-            dist_y = [dist_bins[dist] for dist in dist_x]
+            # dist_y = [dist_bins[dist] for dist in dist_x]
 
             dist_series = []
             for x in range(0, max(inter_note_distances)):
@@ -166,6 +175,9 @@ def get_inter_note_stats(druid):
             # plt.clf()
 
             plt.plot(dist_series[:200])
+            plt.axvline(
+                x=float(note_events_report["avg_hole_width"]), color="r"
+            )
             # plt.yscale("log")
             # plt.xscale("log")
             plt.title("Inter-hole distances for " + druid + " (log scales)")

@@ -16,46 +16,45 @@ import pickle
 from scipy.stats import linregress, trim_mean
 import statistics
 
-EVENT_TYPES = ["note_on", "set_tempo"]  # , "note_off"]
+EVENT_TYPES = ["note_on", "set_tempo"]
 
 # The unaccelerated note MIDI file for the roll
 unaccel = None
+# unaccel = "red/audio/kv550vj8954_exp.mp3"
 # unaccel = "red/mw870hc7232_no_accel-note.mid"
-# unaccel = "green/11381959_no_accel-exp.mid"
-# unaccel = "red/kv550vj8954_note.mid"
-# unaccel = "green/11373080_no_accel-note.mid"
 
 # A MIDI file generated from the same roll, with acceleration
-# accel = "red/Symphony 2-2,3 (Bthvn), Kiek RW.mid"
-accel = "red/zk440mh1715_Hungarian_Rhapsody_2_Loehr.mid"
-# accel = "green_figaro_mp3/UqinWTyQTKM_Julian_Dyer.mp3"
-# accel = "green/11381959-exp-tempo72.mp3"
-# accel = "green_figaro_mp3/Eipy7tcMUb4_Orchard_Bringins.mp3"
-# accel = "green/11373080-peter-Hungarian Rhapsody 14, Gieseking GW.mid"
-# accel = "green/11381959-peter-Figaro Fantasie, Horowitz GW.mid"
+accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
+# accel = "red/audio/kv550vj8954_Philips_La_Campanella.mp3"
 
 # unaccel_tps = None
-unaccel_tps = 433  # Needs to be set if non-accelerated input is an audio file
+unaccel_tps = 568  # Needs to be set if non-accelerated input is an audio file
+# Current values are 433 for green Welte, 568 for red
 # Number of audio samples per "window" for various time-series analyses
 hop_length = 1024
 
-subdir = accel.split("/")[0]
+subdir = "/".join(accel.split("/")[:-1])
 
 if unaccel is None:
-    unaccel = accel.split("_")[0] + "_note.mid"
+    unaccel = accel.split("_")[0] + "_exp.mid"
 
 # Used to differentiate multiple comparisons of the same roll ID
 roll_tag = "philips_midi"
 # Used for all output filenames
 roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
 # Used in visualization plots
-roll_title = accel.split("/")[-1].replace("_", " ")
+roll_title = (
+    accel.split("/")[-1]
+    .replace("_", " ")
+    .replace(".mp3", "")
+    .replace(".mid", "")
+)
 # roll_title = "Liszt/Busoni Horowitz Figaro Fantasy WM 4128"
 # roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 WM 3156"
 # roll_title = "Liszt/Gieseking Hungarian Rhapsody 14 WM 3829"
-source = "Philips (MIDI)"
+source = "Philips"
 
-viz_chroma = True
+viz_chroma = False
 
 NOTES = ["A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#"]
 midiNumberNames = {}

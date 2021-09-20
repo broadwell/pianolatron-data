@@ -64,6 +64,9 @@ ROLL_TYPES = {
     "Welte-Mignon red roll (T-100)..": "welte-red",  # Ugh
     "Scale: 88n.": "88-note",
     "Scale: 65n.": "65-note",
+    "88n": "88-note",
+    "standard": "88-note",
+    "non-reproducing": "88-note",
 }
 
 ROLL_PARSER_DIR = "../roll-image-parser/"
@@ -115,16 +118,16 @@ def get_metadata_for_druid(druid):
                 )
 
     roll_type = None
-    for note in xml_tree.xpath("(x:note)", namespaces=NS):
-        if note is not None and note.text in ROLL_TYPES:
-            roll_type = ROLL_TYPES[note.text]
+    type_note = get_value_by_xpath(
+        "x:physicalDescription/x:note[@displayLabel='Roll type']/text()"
+    )
+    if type_note is not None and type_note in ROLL_TYPES:
+        roll_type = ROLL_TYPES[type_note]
 
     if roll_type == None:
-        type_note = get_value_by_xpath(
-            "x:PhysicalDescription/x:note[@displayLabel='Roll type']/text()"
-        )
-        if type_note is not None and type_note in ROLL_TYPES:
-            roll_type = ROLL_TYPES[type_note]
+        for note in xml_tree.xpath("(x:note)", namespaces=NS):
+            if note is not None and note.text in ROLL_TYPES:
+                roll_type = ROLL_TYPES[note.text]
 
     if roll_type == None:
         roll_type = "NA"
@@ -592,7 +595,14 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    DRUIDS = ["bs533ns1949", "jg717nb8731", "mf443ns5829", "hg709nf1997"]
+    DRUIDS = [
+        "bs533ns1949",
+        "jg717nb8731",
+        "mf443ns5829",
+        "hg709nf1997",
+        "ht999gf1829",
+        "jg489yw0942",
+    ]
 
     # Providing a single DRUID on the cmd line overrides the list above
     if len(sys.argv) > 1:

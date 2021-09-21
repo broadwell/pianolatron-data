@@ -305,7 +305,7 @@ def main():
 
     if "druids" in args:
         DRUIDS = args.druids
-    elif "druids_file" in args:
+    elif "druids_csv_file" in args:
         DRUIDS = get_druids_from_file(args.druids_file)
 
     for druid in DRUIDS:

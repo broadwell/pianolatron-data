@@ -3,7 +3,7 @@
 """ Build per-DRUID metadata .json files and a catalog.json file listing    """
 """ rolls available for consumption by the Pianolatron app, downloading     """
 """ metadata files (if not already cached) and incorporating data from the  """
-""" roll's MIDI files, if available.                                        """
+""" rolls' MIDI files, if available.                                        """
 
 import argparse
 from csv import DictReader
@@ -406,10 +406,14 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     argparser = argparse.ArgumentParser(
-        description="""Generate per-roll .json and .mid files and catalog.json for Pianolatron.
-                       If no DRUIDs are provided on the command line, the script will look for
-                       CSV files in the druids/ folder, and extract DRUIDs from columns with
-                       the header "Druid"."""
+        description="""For all specified roll DRUIDs, generate a
+                       json/DRUID.json file, copy the desired MIDI file type to
+                       midi/DRUID.mid, and generate a catalog.json describing
+                       all rolls processed.
+                       If no DRUIDs are provided on the command line, the
+                       script will look for CSV files in the druids/ folder,
+                       and obtain DRUIDs from columns with the header "Druid".
+                    """
     )
     argparser.add_argument(
         "druids",

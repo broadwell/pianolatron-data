@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 
-""" downloading metadata files and the images themselves   """
-""" (if not already cached), then using external tools to generate the roll """
-""" image processing analysis output and MIDI files  """
+""" For each roll indicated by DRUID on the command line or in a CSV file,  """
+""" download roll metadata files, IIIF manifests, and the images themselves """
+""" (if not already cached), then use the tiff2holes executable from the    """
+""" roll-image-parser repo to perform the image/hole parsing analysis, then """
+""" extract the binasc-encoded raw and note MIDI data from the output       """
+""" files, then use the external binasc tool to convert these to binary     """
+""" MIDI files, then (if desired) use the midi2exp executable from the      """
+""" midi2exp repo to generate expressionized MIDI files.                    """
 
 import argparse
 from csv import DictReader
@@ -25,9 +30,9 @@ ROLL_TYPES = ["welte-red", "88-note", "65-note"]
 # This overrides the --ignore_rewind_hole command line switch; both are used
 # to ignore the detected rewind hole position for a roll when assigning MIDI
 # numbers to hole columns (tracker bar positions); the rewind hole position
-# sometimes can be detected incorrectly due to test patterns at the end of the
-# roll, conjoined rolls, or spurious holes, and it's better to ignore it and
-# hope the other alignment methods will assign the MIDI numbers correctly.
+# can be detected incorrectly due to test patterns at the end of the roll,
+# conjoined rolls, or spurious holes, and sometimes it's better to ignore it
+# and hope the other alignment methods will assign the MIDI numbers correctly.
 IGNORE_REWIND_HOLE = [
     "mh156nr8259",
     "cd381jt9273",
@@ -45,7 +50,6 @@ PURL_BASE = "https://purl.stanford.edu/"
 
 
 def get_iiif_manifest(druid, redownload_manifests=True):
-
     iiif_filepath = Path(f"manifests/{druid}.json")
     if iiif_filepath.exists() and not redownload_manifests:
         iiif_manifest = json.load(open(iiif_filepath, "r"))
@@ -68,13 +72,6 @@ def get_tiff_url(iiif_manifest):
         ):
             return rendering["@id"]
     return None
-
-
-def get_iiif_url(iiif_manifest):
-    resource_id = iiif_manifest["sequences"][0]["canvases"][0]["images"][0][
-        "resource"
-    ]["@id"]
-    return resource_id.replace("full/full/0/default.jpg", "info.json")
 
 
 def get_druids_from_file(druids_fp):
@@ -225,14 +222,14 @@ def main():
         description="Download and process roll image(s) to produce MIDI files"
     )
     argparser.add_argument(
-        "-f",
-        "--druids_csv_file",
-        help="path to a CSV file listing rolls, with DRUIDs in the 'Druid' column",
-    )
-    argparser.add_argument(
         "druids",
         nargs="*",
-        help="DRUID(s) of one or more rolls to be processed",
+        help="DRUID(s) of one or more rolls to be processed, separated by spaces",
+    )
+    argparser.add_argument(
+        "-f",
+        "--druids_csv_file",
+        help="Path to a CSV file listing rolls, with DRUIDs in the 'Druid' column",
     )
     argparser.add_argument(
         "-t",
@@ -254,7 +251,7 @@ def main():
     argparser.add_argument(
         "--reprocess_images",
         action="store_true",
-        help="Always parse roll images, overwriting files in txt/",
+        help="Always parse roll images, overwriting output files in txt/",
     )
     argparser.add_argument(
         "--mirror_images",

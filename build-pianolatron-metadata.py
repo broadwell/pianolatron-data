@@ -26,7 +26,7 @@ ROLLS_TO_SKIP = ["rr052wh1991", "hm136vg1420"]
 ROLL_TYPES = {
     "Welte-Mignon red roll (T-100)": "welte-red",
     "Welte-Mignon red roll (T-100).": "welte-red",
-    "Welte-Mignon red roll (T-100)..": "welte-red",  # Ugh
+    "Welte-Mignon red roll (T-100)..": "welte-red",
     "Scale: 88n.": "88-note",
     "Scale: 65n.": "65-note",
     "88n": "88-note",
@@ -49,8 +49,6 @@ def get_metadata_for_druid(druid, redownload_mods):
         except IndexError:
             return None
 
-    logging.info(f"Processing {druid}...")
-
     # Takes an array of potential xpaths, returns the first one that matches,
     # or None
     def get_value_by_xpaths(xpaths):
@@ -72,26 +70,27 @@ def get_metadata_for_druid(druid, redownload_mods):
     else:
         xml_tree = etree.parse(mods_filepath.open())
 
-    roll_type = None
+    # The representation of the roll type in the MODS metadata continues to
+    # evolve, but this logic should work
+    roll_type = "NA"
     type_note = get_value_by_xpath(
         "x:physicalDescription/x:note[@displayLabel='Roll type']/text()"
     )
     if type_note is not None and type_note in ROLL_TYPES:
         roll_type = ROLL_TYPES[type_note]
-
-    if roll_type == None:
+    else:
         for note in xml_tree.xpath("(x:note)", namespaces=NS):
             if note is not None and note.text in ROLL_TYPES:
                 roll_type = ROLL_TYPES[note.text]
 
-    if roll_type == None:
-        roll_type = "NA"
-
     metadata = {
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
-        "composer": get_value_by_xpath(
-            "x:name[descendant::x:roleTerm[text()='composer']]/"
-            "x:namePart[not(@type='date')]/text()"
+        "composer": get_value_by_xpaths(
+            [
+                "x:name[descendant::x:roleTerm[text()='composer']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='Composer']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='cmp']]/x:namePart[not(@type='date')]/text()",
+            ]
         ),
         "performer": get_value_by_xpath(
             "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
@@ -122,14 +121,23 @@ def get_metadata_for_druid(druid, redownload_mods):
         "publisher": get_value_by_xpaths(
             [
                 "x:identifier[@type='publisher']/text()",
-                "x:originInfo[@eventType='publication']/publisher/text()",
+                "x:originInfo[@eventType='publication']/x:publisher/text()",
             ]
         ),
         "number": get_value_by_xpath(
             "x:identifier[@type='publisher number']/text()"
         ),
-        "publish_date": get_value_by_xpath(
-            "x:originInfo[@eventType='publication']/x:dateIssued[@keyDate='yes']/text()"
+        "publish_date": get_value_by_xpaths(
+            [
+                "x:originInfo[@eventType='publication']/x:dateIssued[@keyDate='yes']/text()",
+                "x:originInfo[@eventType='publication']/x:dateIssued/text()",
+                "x:originInfo/x:dateIssued[@point='start']/text()",
+            ]
+        ),
+        "publish_place": get_value_by_xpaths(
+            [
+                "x:originInfo[@eventType='publication']/x:place/x:placeTerm[@type='text']/text()",
+            ]
         ),
         "recording_date": get_value_by_xpaths(
             [
@@ -137,7 +145,8 @@ def get_metadata_for_druid(druid, redownload_mods):
                 "x:originInfo[@eventType='publication']/x:dateCaptured/text()",
             ]
         ),
-        "call_number": get_value_by_xpath("x:location/x:shelfLocator/text()"),
+        # The call number is not consistently available in all MODS variants
+        # "call_number": get_value_by_xpath("x:location/x:shelfLocator/text()"),
         "type": roll_type,
         "PURL": PURL_BASE + druid,
     }
@@ -156,19 +165,6 @@ def get_iiif_manifest(druid, redownload_manifests):
     else:
         iiif_manifest = json.load(open(iiif_filepath, "r"))
     return iiif_manifest
-
-
-def get_tiff_url(iiif_manifest):
-    if "rendering" not in iiif_manifest["sequences"][0]:
-        return None
-
-    for rendering in iiif_manifest["sequences"][0]["rendering"]:
-        if (
-            rendering["format"] == "image/tiff"
-            or rendering["format"] == "image/x-tiff-big"
-        ):
-            return rendering["@id"]
-    return None
 
 
 def get_iiif_url(iiif_manifest):
@@ -199,6 +195,9 @@ def merge_midi_velocities(roll_data, hole_data, druid):
     midi_filepath = Path(f"midi/{druid}.mid")
 
     if not midi_filepath.exists():
+        logging.info(
+            f"MIDI file not found for {druid}, won't include velocities in .json"
+        )
         return hole_data
 
     first_music_px = int(roll_data["FIRST_HOLE"].removesuffix("px"))
@@ -212,7 +211,8 @@ def merge_midi_velocities(roll_data, hole_data, druid):
         for event in note_track:
             current_tick += event.time
             if event.type == "note_on":
-                # XXX Not sure why some note events have velocity=1
+                # XXX Not sure why some note events have velocity=1, but this
+                # works with the in-app expression code
                 if event.velocity > 1:
                     if current_tick in tick_notes_velocities:
                         tick_notes_velocities[current_tick][
@@ -240,11 +240,14 @@ def merge_midi_velocities(roll_data, hole_data, druid):
     return hole_data
 
 
-def get_hole_data(druid):
+def get_hole_report_data(druid):
     txt_filepath = Path(f"txt/{druid}.txt")
 
+    roll_data = {}
+    hole_data = []
+
     if not txt_filepath.exists():
-        return None, None
+        return roll_data, hole_data
 
     roll_keys = [
         "AVG_HOLE_WIDTH",
@@ -268,9 +271,6 @@ def get_hole_data(druid):
         "MIDI_KEY",
         # "TRACKER_HOLE",
     ]
-
-    roll_data = {}
-    hole_data = []
 
     dropped_holes = 0
 
@@ -344,94 +344,58 @@ def get_druids_from_files():
     return druids_list
 
 
-def merge_iiif_metadata(metadata, iiif_manifest):
-    # Note that the CSV lists of DRUIDs also provide descriptions for each roll, but
-    # these may not always be available.
-    composer = None
-    performer = None
-    arranger = None
-    description = None
-    publisher = None
-    number = None
+def refine_metadata(metadata):
+    # Note that the CSV lists of DRUIDs also provide descriptions for each
+    # roll with some of this metadata, but these won't always be available
 
-    for item in iiif_manifest["metadata"]:
-        if item["label"] == "Contributor":
-            if item["value"].lower().find("composer") != -1:
-                composer = item["value"].split("(")[0].strip()
-            if item["value"].lower().find("instrumentalist") != -1:
-                performer = item["value"].split("(")[0].strip()
-            if item["value"].lower().find("arranger of music") != -1:
-                arranger = item["value"].split("(")[0].strip()
-            # This is usually more verbose than the value from the MODS
-            # or from the first-level "Publisher" key below
-            # if item["value"].lower().find("publisher") != -1:
-            #    publisher = item["value"].split("(")[0].strip()
-        elif item["label"] == "Publisher":
-            publisher = item["value"].strip()
+    # Extract the publisher shorthand (e.g., Welte-Mignon) and issue number
+    # from the label data, if available
+    if metadata["label"] is not None and len(metadata["label"].split(" ")) == 2:
+        metadata["number"], metadata["publisher"] = metadata["label"].split(" ")
+    elif metadata["label"] is None:
+        if metadata["number"] is None:
+            metadata["number"] = "----"
+        metadata["label"] = metadata["number"] + " " + metadata["publisher"]
 
+    # Construct a summary of the roll's music to use in the searchbar
+    searchtitle = None
+
+    composer_short = ""
     if metadata["composer"] is not None:
-        composer = metadata["composer"]
-    if metadata["performer"] is not None:
-        performer = metadata["performer"]
-    if metadata["arranger"] is not None:
-        arranger = metadata["arranger"]
-    if metadata["publisher"] is not None:
-        publisher = metadata["publisher"]
-    if metadata["number"] is not None:
-        number = metadata["number"]
-    else:
+        composer_short = metadata["composer"].split(",")[0].strip()
+
+    if metadata["original_composer"] is not None:
+        original_composer_short = (
+            metadata["original_composer"].split(",")[0].strip()
+        )
         if (
-            metadata["label"] is not None
-            and len(metadata["label"].split(" ")) == 2
+            metadata["composer"] is not None
+            and original_composer_short != composer_short
         ):
-            number = metadata["label"].split(" ")[0]
+            searchtitle = f"{original_composer_short}-{composer_short}"
+    elif metadata["composer"] is not None:
+        searchtitle = composer_short
 
-    if metadata["label"] is None:
-        if number is None:
-            number = "----"
-        metadata["label"] = number + " " + publisher
+    if metadata["arranger"] is not None:
+        arranger_short = metadata["arranger"].split(",")[0].strip()
+        if searchtitle is not None and arranger_short != composer_short:
+            searchtitle += f"-{arranger_short}"
+        else:
+            searchtitle = arranger_short
 
-    original_composer = metadata["original_composer"]
+    if metadata["performer"] is not None:
+        performer_short = metadata["performer"].split(",")[0].strip()
+        if searchtitle is not None:
+            searchtitle += "/" + performer_short
+        else:
+            searchtitle = performer_short
 
-    if (
-        original_composer is not None
-        and composer is not None
-        and original_composer.split(",")[0].strip()
-        != composer.split(",")[0].strip()
-    ):
-        description = f"{original_composer.split(',')[0].strip()}-{composer.split(',')[0].strip()}"
-    elif composer is not None:
-        description = composer.split(",")[0].strip()
-
-    if (
-        arranger is not None
-        and description is not None
-        and arranger.split(",")[0].strip() != composer.split(",")[0].strip()
-    ):
-        description += f"-{arranger.split(',')[0].strip()}"
-    elif arranger is not None:
-        description = arranger.split(",")[0].strip()
-
-    if performer is not None and description is not None:
-        description += "/" + performer.split(",")[0].strip()
-    elif performer is not None:
-        description = performer.split(",")[0].strip()
-
-    # The IIIF manifest has already concocted a title from the MODS
-    title = iiif_manifest["label"].replace(" : ", ": ").strip().capitalize()
-
-    if description is not None:
-        description += " - " + title
+    if searchtitle is not None:
+        searchtitle += " - " + metadata["title"]
     else:
-        description = title
+        searchtitle = metadata["title"]
 
-    # Update the values that may have been changed above during the merge
-    metadata["title"] = description
-    metadata["composer"] = composer
-    metadata["performer"] = performer
-    metadata["arranger"] = arranger
-    metadata["publisher"] = publisher
-    metadata["number"] = number
+    metadata["searchtitle"] = searchtitle
 
     return metadata
 
@@ -442,17 +406,20 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     argparser = argparse.ArgumentParser(
-        description="Generate per-roll and catalog JSON files and MIDI files for Pianolatron"
+        description="""Generate per-roll .json and .mid files and catalog.json for Pianolatron.
+                       If no DRUIDs are provided on the command line, the script will look for
+                       CSV files in the druids/ folder, and extract DRUIDs from columns with
+                       the header "Druid"."""
     )
     argparser.add_argument(
         "druids",
         nargs="*",
-        help="DRUID(s) of one or more rolls to be processed",
+        help="DRUID(s) of one or more rolls to be processed, separated by spaces",
     )
     argparser.add_argument(
         "--no_catalog",
         action="store_true",
-        help="Do not generate new catalog.json (preexisting file will remain)",
+        help="Do not generate a new catalog.json (preexisting file will remain)",
     )
     argparser.add_argument(
         "--redownload_manifests",
@@ -462,30 +429,26 @@ def main():
     argparser.add_argument(
         "--redownload_mods",
         action="store_true",
-        help="Always download MODS files, overwriting files in images/",
+        help="Always download MODS files, overwriting files in mods/",
     )
     argparser.add_argument(
         "--use_exp_midi",
         action="store_true",
-        help="Use expressionized MIDI for playback; default is to use note MIDI",
+        help="Use expressionized MIDI for output .mid files in midi/ (default is to use note MIDI)",
     )
 
     args = argparser.parse_args()
 
+    DRUIDS = []
+
     if "druids" in args:
         DRUIDS = args.druids
-    else:
+
+    if len(DRUIDS) == 0:
         DRUIDS = get_druids_from_files()
 
-    # Can manually specify DRUIDs here, overriding command line input
-    DRUIDS = [
-        # "bs533ns1949",
-        # "jg717nb8731",
-        # "mf443ns5829",
-        # "hg709nf1997",
-        # "ht999gf1829",
-        # "jg489yw0942",
-    ]
+    # Override cmd line or CSV DRUIDs lists
+    # DRUIDS = ["hb523vs3190"]
 
     catalog_entries = []
 
@@ -494,6 +457,8 @@ def main():
         if druid in ROLLS_TO_SKIP:
             logging.info(f"Skippig DRUID {druid}")
             continue
+
+        logging.info(f"Processing {druid}...")
 
         metadata = get_metadata_for_druid(druid, args.redownload_mods)
 
@@ -515,10 +480,11 @@ def main():
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
 
-        roll_data, hole_data = get_hole_data(druid)
+        roll_data, hole_data = get_hole_report_data(druid)
 
-        metadata = merge_iiif_metadata(metadata, iiif_manifest)
+        metadata = refine_metadata(metadata)
 
+        # Add roll-level hole report info to the metadata
         for key in roll_data:
             metadata[key] = roll_data[key]
 
@@ -535,7 +501,7 @@ def main():
             catalog_entries.append(
                 {
                     "druid": druid,
-                    "title": metadata["title"],
+                    "title": metadata["searchtitle"],
                     "image_url": get_iiif_url(iiif_manifest),
                     "type": metadata["type"],
                     "label": metadata["label"],

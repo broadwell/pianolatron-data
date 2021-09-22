@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
-""" Build per-DRUID metadata .json files and a catalog.json file listing    """
+""" Builds per-DRUID metadata .json files and a catalog.json file listing   """
 """ rolls available for consumption by the Pianolatron app, downloading     """
 """ metadata files (if not already cached) and incorporating data from the  """
-""" rolls' MIDI files, if available.                                        """
+""" rolls' MIDI files, if available. Writes JSON and MIDI files to the      """
+""" proper locations to be used by the app.                                 """
 
 import argparse
 from csv import DictReader
@@ -37,6 +38,10 @@ ROLL_TYPES = {
 PURL_BASE = "https://purl.stanford.edu/"
 STACKS_BASE = "https://stacks.stanford.edu/file/"
 NS = {"x": "http://www.loc.gov/mods/v3"}
+
+MIDI_DIR = "midi"
+TXT_DIR = "txt"
+IIIF_DIR = "manifests"
 
 
 def get_metadata_for_druid(druid, redownload_mods):
@@ -154,16 +159,23 @@ def get_metadata_for_druid(druid, redownload_mods):
     return metadata
 
 
-def get_iiif_manifest(druid, redownload_manifests):
+def get_iiif_manifest(druid, redownload_manifests, iiif_source_dir):
 
-    iiif_filepath = Path(f"manifests/{druid}.json")
-    if not iiif_filepath.exists() or redownload_manifests:
+    target_iiif_filepath = Path(f"manifests/{druid}.json")
+    source_iiif_filepath = Path(f"{iiif_source_dir}/{druid}.json")
+    if (
+        not target_iiif_filepath.exists()
+        or not source_iiif_filepath.exists()
+        or redownload_manifests
+    ):
         response = requests.get(f"{PURL_BASE}{druid}/iiif/manifest")
         iiif_manifest = response.json()
-        with iiif_filepath.open("w") as _fh:
+        with target_iiif_filepath.open("w") as _fh:
             json.dump(iiif_manifest, _fh)
+    elif source_iiif_filepath.exists():
+        iiif_manifest = json.load(open(source_iiif_filepath, "r"))
     else:
-        iiif_manifest = json.load(open(iiif_filepath, "r"))
+        iiif_manifest = json.load(open(target_iiif_filepath, "r"))
     return iiif_manifest
 
 
@@ -176,7 +188,7 @@ def get_iiif_url(iiif_manifest):
 
 def build_tempo_map_from_midi(druid):
 
-    midi_filepath = Path(f"midi/{druid}.mid")
+    midi_filepath = Path(f"../public/midi/{druid}.mid")
     midi = MidiFile(midi_filepath)
 
     tempo_map = []
@@ -192,7 +204,7 @@ def build_tempo_map_from_midi(druid):
 
 def merge_midi_velocities(roll_data, hole_data, druid):
 
-    midi_filepath = Path(f"midi/{druid}.mid")
+    midi_filepath = Path(f"../public/midi/{druid}.mid")
 
     if not midi_filepath.exists():
         logging.info(
@@ -240,13 +252,14 @@ def merge_midi_velocities(roll_data, hole_data, druid):
     return hole_data
 
 
-def get_hole_report_data(druid):
-    txt_filepath = Path(f"txt/{druid}.txt")
+def get_hole_report_data(druid, analysis_source_dir):
+    txt_filepath = Path(f"{analysis_source_dir}/{druid}.txt")
 
     roll_data = {}
     hole_data = []
 
     if not txt_filepath.exists():
+        logging.info(f"Unable to find hole analysis output file for {druid}.")
         return roll_data, hole_data
 
     roll_keys = [
@@ -328,7 +341,7 @@ def remap_hole_data(hole_data):
 
 
 def write_json(druid, metadata):
-    output_path = Path(f"json/{druid}.json")
+    output_path = Path(f"../public/json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
         json.dump(metadata, _fh)
@@ -345,10 +358,11 @@ def get_druids_from_files():
 
 
 def refine_metadata(metadata):
-    # Note that the CSV lists of DRUIDs also provide descriptions for each
-    # roll with some of this metadata, but these won't always be available
+    # Note that the CSV files that list DRUIDs by collection/roll type also
+    # provide descriptions for each roll with some of this metadata, but these
+    # files (or descriptions) won't always be available
 
-    # Extract the publisher shorthand (e.g., Welte-Mignon) and issue number
+    # Extract the publisher short name (e.g., Welte-Mignon) and issue number
     # from the label data, if available
     if metadata["label"] is not None and len(metadata["label"].split(" ")) == 2:
         metadata["number"], metadata["publisher"] = metadata["label"].split(" ")
@@ -406,10 +420,12 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     argparser = argparse.ArgumentParser(
-        description="""For all specified roll DRUIDs, generate a
-                       json/DRUID.json file, copy the desired MIDI file type to
-                       midi/DRUID.mid, and generate a catalog.json describing
-                       all rolls processed.
+        description="""Generate per-roll DRUID.json files as well as a
+                       comprehensive catalog.json file that describes all rolls
+                       processed, and place these files, along with the 
+                       desired MIDI file type (_note or _exp) as DRUID.mid in
+                       the proper location in the Pianolatron source/assets
+                       folders.
                        If no DRUIDs are provided on the command line, the
                        script will look for CSV files in the druids/ folder,
                        and obtain DRUIDs from columns with the header "Druid".
@@ -440,6 +456,21 @@ def main():
         action="store_true",
         help="Use expressionized MIDI for output .mid files in midi/ (default is to use note MIDI)",
     )
+    argparser.add_argument(
+        "--midi_source_dir",
+        default=MIDI_DIR,
+        help="External folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/note/DRUID_exp.mid) MIDI files",
+    )
+    argparser.add_argument(
+        "--analysis_source_dir",
+        default=TXT_DIR,
+        help="External folder containg hole analysis output files (DRUID.txt)",
+    )
+    argparser.add_argument(
+        "--iiif_source_dir",
+        default=IIIF_DIR,
+        help="External folder containg pre-downloaded IIIF manifests (DRUID.json)",
+    )
 
     args = argparser.parse_args()
 
@@ -466,25 +497,32 @@ def main():
 
         metadata = get_metadata_for_druid(druid, args.redownload_mods)
 
-        iiif_manifest = get_iiif_manifest(druid, args.redownload_manifests)
+        iiif_manifest = get_iiif_manifest(
+            druid, args.redownload_manifests, args.iiif_source_dir
+        )
 
         if (
             not args.use_exp_midi
-            and Path(f"midi/note/{druid}_note.mid").exists()
+            and Path(f"{args.midi_source_dir}/note/{druid}_note.mid").exists()
         ):
             copy(
-                Path(f"midi/note/{druid}_note.mid"),
-                Path(f"midi/{druid}.mid"),
+                Path(f"{args.midi_source_dir}/note/{druid}_note.mid"),
+                Path(f"../public/midi/{druid}.mid"),
             )
-            note_midi = MidiFile(Path(f"midi/note/{druid}_note.mid"))
+            note_midi = MidiFile(Path(f"../public/midi/{druid}.mid"))
             metadata["NOTE_MIDI_TPQ"] = note_midi.ticks_per_beat
-        elif Path(f"midi/exp/{druid}_exp.mid").exists():
-            copy(Path(f"midi/exp/{druid}_exp.mid"), Path(f"midi/{druid}.mid"))
+        elif Path(f"{args.midi_source_dir}/exp/{druid}_exp.mid").exists():
+            copy(
+                Path(f"{args.midi_source_dir}/exp/{druid}_exp.mid"),
+                Path(f"../public/midi/{druid}.mid"),
+            )
 
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
 
-        roll_data, hole_data = get_hole_report_data(druid)
+        roll_data, hole_data = get_hole_report_data(
+            druid, args.analysis_source_dir
+        )
 
         metadata = refine_metadata(metadata)
 
@@ -514,7 +552,9 @@ def main():
 
     if not args.no_catalog:
         sorted_catalog = sorted(catalog_entries, key=lambda i: i["title"])
-        with open("catalog.json", "w", encoding="utf8") as catalog_file:
+        with open(
+            "../src/config/catalog.json", "w", encoding="utf8"
+        ) as catalog_file:
             json.dump(
                 sorted_catalog,
                 catalog_file,

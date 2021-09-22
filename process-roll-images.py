@@ -1,13 +1,22 @@
 #!/usr/bin/env python3
 
-""" For each roll indicated by DRUID on the command line or in a CSV file,  """
-""" download roll metadata files, IIIF manifests, and the images themselves """
-""" (if not already cached), then use the tiff2holes executable from the    """
-""" roll-image-parser repo to perform the image/hole parsing analysis, then """
-""" extract the binasc-encoded raw and note MIDI data from the output       """
-""" files, then use the external binasc tool to convert these to binary     """
-""" MIDI files, then (if desired) use the midi2exp executable from the      """
-""" midi2exp repo to generate expressionized MIDI files.                    """
+""" This script produces raw, note, and (if desired) expressionized MIDI    """
+""" files (written to the midi/ folder), as well as hole analysis output    """
+""" files (written to the txt/ folder) for each specified piano roll image. """
+""" Rolls to be processed can be specified by DRUID on the command line     """
+""" (separated by spaces) or in a CSV file (DRUIDs in the "Druid" column).  """
+""" For each roll, the script downloads the roll's MODS metadata file, its  """
+""" IIIF manifest, and the roll image TIFF file from the SDR (if not        """
+""" already cached).                                                        """
+""" The script then uses the tiff2holes executable from                     """
+""" https://github.com/pianoroll/roll-image-parser to perform the image/    """
+""" hole parsing analysis, then extracts the binasc-encoded raw and note    """
+""" MIDI data from the analysis file.                                       """
+""" The external binasc tool (https://github.com/craigsapp/binasc) is used  """
+""" to convert the extracted MIDI data to binary MIDI files.                """
+""" Then, if desired, the the midi2exp executable from                      """
+""" https://github.com/pianoroll/midi2exp/ generates expressionized MIDI    """
+""" files.                                                                  """
 
 import argparse
 from csv import DictReader
@@ -291,14 +300,8 @@ def main():
 
     args = argparser.parse_args()
 
-    DRUIDS = [
-        "bs533ns1949",
-        "jg717nb8731",
-        "mf443ns5829",
-        "hg709nf1997",
-        "ht999gf1829",
-        "jg489yw0942",
-    ]
+    # Adding DRUIDs here will override user input
+    DRUIDS = []
 
     if "druids" in args:
         DRUIDS = args.druids

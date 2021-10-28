@@ -15,17 +15,25 @@ import numpy as np
 import pickle
 from scipy.stats import linregress, trim_mean
 import statistics
+import sys
 
 EVENT_TYPES = ["note_on", "set_tempo"]
 
-# The unaccelerated note MIDI file for the roll
+# The unaccelerated exp MP3 or note MIDI file for the roll
 unaccel = None
-# unaccel = "red/audio/kv550vj8954_exp.mp3"
-# unaccel = "red/mw870hc7232_no_accel-note.mid"
+if len(sys.argv) > 1:
+    unaccel = sys.argv[1]
+if unaccel is None:
+    unaccel = "red/audio/hm523dq5554_exp.mp3"
+    # unaccel = "red/mw870hc7232_no_accel-note.mid"
 
-# A MIDI file generated from the same roll, with acceleration
-accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
-# accel = "red/audio/kv550vj8954_Philips_La_Campanella.mp3"
+# A MIDI or MP3 of the same roll, with acceleration
+accel = None
+if len(sys.argv) > 2:
+    accel = sys.argv[2]
+if accel is None:
+    accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
+    #accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
 
 # unaccel_tps = None
 unaccel_tps = 568  # Needs to be set if non-accelerated input is an audio file
@@ -39,9 +47,9 @@ if unaccel is None:
     unaccel = accel.split("_")[0] + "_exp.mid"
 
 # Used to differentiate multiple comparisons of the same roll ID
-roll_tag = "philips_midi"
+roll_tag = ""
 # Used for all output filenames
-roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0] + "_" + roll_tag
+roll_id = unaccel.split("/")[-1].split("-")[0].split("_")[0]  # + "_" + roll_tag
 # Used in visualization plots
 roll_title = (
     accel.split("/")[-1]
@@ -52,7 +60,7 @@ roll_title = (
 # roll_title = "Liszt/Busoni Horowitz Figaro Fantasy WM 4128"
 # roll_title = "Beethoven/Kiek Symphony 2, mvts. 2-3 WM 3156"
 # roll_title = "Liszt/Gieseking Hungarian Rhapsody 14 WM 3829"
-source = "Philips"
+roll_source = "Phillips (MIDI)"
 
 viz_chroma = False
 
@@ -426,7 +434,7 @@ def visualize_observed_velocities(accel_t, accel_v):
         "--r",
     )
 
-    plt.title(roll_title + " - " + source)
+    plt.title(roll_title + " - " + roll_source)
     plt.xlabel("minutes")
     plt.ylabel("feet/minute")
     plt.legend(

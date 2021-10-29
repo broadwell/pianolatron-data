@@ -33,7 +33,7 @@ if len(sys.argv) > 2:
     accel = sys.argv[2]
 if accel is None:
     accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
-    #accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
+    # accel = "red/yt837kd6607_Ricordanza_Scharwenka_RW.mid"
 
 # unaccel_tps = None
 unaccel_tps = 568  # Needs to be set if non-accelerated input is an audio file
@@ -79,7 +79,7 @@ def get_midi_speed(midi_filepath):
     tpb = midifile.ticks_per_beat
     starting_tempo = 0.0
 
-    logging.info(f"{midi_filepath} ticks per beat: {tpb}")
+    logging.debug(f"{midi_filepath} ticks per beat: {tpb}")
 
     if len(midifile.tracks) > 3:
         unitrack = mido.merge_tracks(midifile.tracks[:3])
@@ -97,21 +97,21 @@ def get_midi_speed(midi_filepath):
 def get_midi_timings(
     midi_filepath,
     use_this_tpb=None,
-    use_this_tempo=None,
+    keep_initial_tempo=False,
     use_chroma_numbers=False,
 ):
     logging.info(f"Getting note timings for {midi_filepath}")
 
     midifile = mido.MidiFile(midi_filepath)
 
-    logging.info(f"MIDI duration is {midifile.length:.2f}s")
+    logging.debug(f"MIDI duration is {midifile.length:.2f}s")
 
     if use_this_tpb is not None:
         midifile.ticks_per_beat = use_this_tpb
 
     tpb = midifile.ticks_per_beat
 
-    logging.info(f"Ticks per beat: {tpb}")
+    logging.debug(f"Ticks per beat: {tpb}")
 
     if len(midifile.tracks) > 3:
         # This should work for note MIDI (notes on tracks 1 and 2)
@@ -119,7 +119,7 @@ def get_midi_timings(
     else:
         unitrack = mido.merge_tracks(midifile.tracks)
 
-    logging.info(f"Total messages in combined track: {len(unitrack)}")
+    logging.debug(f"Total messages in combined track: {len(unitrack)}")
 
     current_tick = 0
     total_notes = 0
@@ -141,23 +141,21 @@ def get_midi_timings(
 
         if event.type == "set_tempo":
 
-            logging.info(
-                f"Setting tempo at {event.time} to {event.tempo} ms per beat ({mido.tempo2bpm(event.tempo)} bpm)"
-            )
-
-            if use_this_tempo is not None:
-                logging.info(
-                    f"Overriding tempo at {event.time} to {use_this_tempo} ms per beat ({mido.tempo2bpm(use_this_tempo)} bpm)"
-                )
-                event.tempo = use_this_tempo
-
             ticks_at_this_tempo = current_tick - current_tempo_start_tick
             seconds_before_current_tempo += mido.tick2second(
                 ticks_at_this_tempo, tpb, current_tempo
             )
 
-            current_tempo = event.tempo
-            current_tempo_start_tick = current_tick
+            if keep_initial_tempo is not None and current_tempo != 0.0:
+                logging.debug(
+                    f"Ignoring tempo at {event.time}, keeping initial tempo of {current_tempo} ms per beat ({mido.tempo2bpm(current_tempo)} bpm)"
+                )
+            else:
+                logging.debug(
+                    f"Setting tempo at {event.time}: {event.tempo} ms per beat ({mido.tempo2bpm(event.tempo)} bpm)"
+                )
+                current_tempo = event.tempo
+                current_tempo_start_tick = current_tick
 
         if event.type == "note_on":
             total_notes += 1
@@ -187,10 +185,10 @@ def get_midi_timings(
                 )
             )
 
-    logging.info(
+    logging.debug(
         f"Total note events: {total_notes}, note_on {notes_on}, velocity=0 {notes_off}"
     )
-    logging.info(
+    logging.debug(
         f"Last event tick: {current_tick}, last note event time: {event_time_in_seconds:.4f}"
     )
 
@@ -215,9 +213,9 @@ def get_chroma_features(audio_filepath):
 
     duration = librosa.get_duration(y)
 
-    logging.info(f"Duration: {duration}, Loaded sample rate: {fs}")
+    logging.debug(f"Duration: {duration}, Loaded sample rate: {fs}")
     total_samples = y.size
-    logging.info(f"Length of samples: {total_samples}")
+    logging.debug(f"Length of samples: {total_samples}")
 
     # n_fft = int(fs / 2)
 
@@ -225,7 +223,7 @@ def get_chroma_features(audio_filepath):
     #    y=y, sr=fs, hop_length=hop_length, units="time"
     # )
 
-    logging.info(f"Getting pitch class chroma for {audio_filepath}")
+    logging.debug(f"Getting pitch class chroma for {audio_filepath}")
     chroma = librosa.feature.chroma_stft(y=y, sr=fs, hop_length=hop_length)
 
     return [chroma, fs, duration, total_samples]
@@ -236,12 +234,12 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
     chroma, fs, duration, total_samples = get_chroma_features(audio_filepath)
 
     chroma_time_bins = len(chroma[0])
-    logging.info(f"Number of chroma time bins: {chroma_time_bins}")
+    logging.debug(f"Number of chroma time bins: {chroma_time_bins}")
 
     chroma_time_quantum = duration / chroma_time_bins
     samples_per_chroma_quantum = total_samples / chroma_time_bins
-    logging.info(f"Duration of a chroma time bin: {chroma_time_quantum:.4f}s")
-    logging.info(
+    logging.debug(f"Duration of a chroma time bin: {chroma_time_quantum:.4f}s")
+    logging.debug(
         f"Samples per chroma time bin: {samples_per_chroma_quantum:.2f}"
     )
 
@@ -288,7 +286,7 @@ def get_chroma_timings(audio_filepath, ticks_per_second=None):
 
 
 def compute_acceleration_by_matches(
-    matched_events_by_unaccel_ticks, per_foot=True
+    matched_events_by_unaccel_ticks, per_foot=True, skip_end=False
 ):
 
     # Calculate overall and recent velocities at roughly each foot of the
@@ -309,9 +307,14 @@ def compute_acceleration_by_matches(
 
     last_foot = 0
 
+    final_unaccel_tick = sorted(matched_events_by_unaccel_ticks)[-1]
+
     for unaccel_tick in sorted(matched_events_by_unaccel_ticks):
         if (unaccel_tick - last_unaccel_tick) < sample_interval:
             continue
+
+        if skip_end and unaccel_tick + sample_interval > final_unaccel_tick:
+            break
 
         actual_feet_overall = float(unaccel_tick) / 3600.0
         actual_feet_delta = (
@@ -334,10 +337,10 @@ def compute_acceleration_by_matches(
             overall_accel_fpm = actual_feet_overall / accel_time * 60
 
             if int(last_foot) < int(actual_feet_overall):
-                logging.info(
+                logging.debug(
                     f"{actual_feet_overall:.4f}ft ({unaccel_tick} unaccel ticks), unaccel time is {unaccel_time:.4f}s, accel time is {accel_time:.4f}s"
                 )
-                logging.info(
+                logging.debug(
                     f"Actual ft delta: {actual_feet_delta:.4f}ft, unaccel delta v: {last_unaccel_fpm:.4f}ft/m, overall: {overall_unaccel_fpm:.4f}ft/m, accel delta v: {last_accel_fpm:.4f}ft/m, overall: {overall_accel_fpm:.4f}ft/m"
                 )
 
@@ -373,7 +376,7 @@ def visualize_observed_velocities(accel_t, accel_v):
 
     # Mostly useless average acceleration number
     acceleration = (accel_v[-1] - accel_v[2]) / ((accel_t[-1] - accel_t[2]))
-    logging.info(f"Average acceleration since ft 2: {acceleration:.4f}ft/m^2")
+    logging.debug(f"Average acceleration since ft 2: {acceleration:.4f}ft/m^2")
 
     # Kalman filter!
     kalman_filter = KalmanFilter(dim_x=2, dim_z=1)
@@ -592,7 +595,7 @@ def main():
             )
             plt.clf()
 
-        logging.info(f"Shape of warping path: {wp.shape}")
+        logging.debug(f"Shape of warping path: {wp.shape}")
 
         unaccel_time_bins = unaccel_total_samples / hop_length
         unaccel_bin_duration = unaccel_duration / unaccel_time_bins
@@ -656,17 +659,21 @@ def main():
         return
 
     elif Path(unaccel).suffix == ".mid" and Path(accel).suffix == ".mp3":
-        unaccel_events = get_midi_timings(unaccel, use_chroma_numbers=True)
+        unaccel_events = get_midi_timings(
+            unaccel, keep_initial_tempo=True, use_chroma_numbers=True
+        )
         accel_events = get_chroma_timings(accel)
     elif Path(unaccel).suffix == ".mid" and Path(accel).suffix == ".mid":
-        unaccel_events = get_midi_timings(unaccel)
+        unaccel_events = get_midi_timings(unaccel, keep_initial_tempo=True)
         accel_events = get_midi_timings(accel)
     else:
-        logging.error("Unable to process this combination of input file types")
+        logging.error(
+            f"Unable to process this combination of input file types: {Path(unaccel)} {Path(accel)}"
+        )
         return
 
-    logging.info(f"Number of unaccelerated note events: {len(unaccel_events)}")
-    logging.info(f"Number of accelerated note events: {len(accel_events)}")
+    logging.debug(f"Number of unaccelerated note events: {len(unaccel_events)}")
+    logging.debug(f"Number of accelerated note events: {len(accel_events)}")
 
     unaccel_notes = [item[0] for item in unaccel_events]
     accel_notes = [item[0] for item in accel_events]
@@ -680,7 +687,7 @@ def main():
 
     # This shouldn't happen, but check to be sure
     if (gap_char in unaccel_chars) or (gap_char in accel_chars):
-        logging.info(
+        logging.debug(
             f"{gap_char} is in the characterized strings, need to use a different gap char"
         )
         return
@@ -707,10 +714,10 @@ def main():
     unaccel_counter = 0
     accel_counter = 0
 
-    logging.info(
+    logging.debug(
         f"total unmatched notes in unaccelerated file: {unaccel_seq.count('-')} out of {len(unaccel_seq)}"
     )
-    logging.info(
+    logging.debug(
         f"total unmatched notes in accelerated file: {accel_seq.count('-')} out of {len(accel_seq)}"
     )
 
@@ -726,7 +733,7 @@ def main():
         if unaccel_counter >= len(unaccel_events) or accel_counter >= len(
             accel_events
         ):
-            logging.info("Counter advanced beyond length of event list(s)")
+            logging.debug("Counter advanced beyond length of event list(s)")
             break
 
         unaccel_event = unaccel_events[unaccel_counter]
@@ -796,7 +803,7 @@ def main():
         )
     else:
         compute_acceleration_by_matches(
-            matched_events_by_unaccel_ticks, per_foot=True
+            matched_events_by_unaccel_ticks, per_foot=True, skip_end=True
         )
 
 

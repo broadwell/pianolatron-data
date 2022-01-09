@@ -33,6 +33,10 @@ ROLL_TYPES = {
     "88n": "88-note",
     "standard": "88-note",
     "non-reproducing": "88-note",
+    "Welte-Mignon green roll (T-98)": "welte-green",
+    "Welte-Mignon green roll (T-98).": "welte-green",
+    "Welte-Mignon licensee roll": "welte-licensee",
+    "Welte-Mignon licensee roll.": "welte-licensee",
 }
 
 PURL_BASE = "https://purl.stanford.edu/"
@@ -89,7 +93,9 @@ def get_metadata_for_druid(druid, redownload_mods):
                 roll_type = ROLL_TYPES[note.text]
 
     metadata = {
+        "title_prefix": get_value_by_xpath("(x:titleInfo/x:nonSort)[1]/text()"),
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
+        "subtitle": get_value_by_xpath("(x:titleInfo/x:subTitle)[1]/text()"),
         "composer": get_value_by_xpaths(
             [
                 "x:name[descendant::x:roleTerm[text()='composer']]/x:namePart[not(@type='date')]/text()",
@@ -371,6 +377,15 @@ def refine_metadata(metadata):
             metadata["number"] = "----"
         metadata["label"] = metadata["number"] + " " + metadata["publisher"]
 
+    # Construct a more user-friendly title from the contents of <titleInfo>
+    fulltitle = metadata["title"].capitalize()
+    if metadata["title_prefix"] is not None:
+        fulltitle = f"{metadata['title_prefix']} {fulltitle}"
+    if metadata["subtitle"] is not None:
+        fulltitle = f"{fulltitle}: {metadata['subtitle']}"
+
+    metadata["title"] = fulltitle.replace(" : ", ": ")
+
     # Construct a summary of the roll's music to use in the searchbar
     searchtitle = None
 
@@ -405,11 +420,11 @@ def refine_metadata(metadata):
             searchtitle = performer_short
 
     if searchtitle is not None:
-        searchtitle += " - " + metadata["title"]
+        searchtitle += " - " + fulltitle
     else:
-        searchtitle = metadata["title"]
+        searchtitle = fulltitle
 
-    metadata["searchtitle"] = searchtitle
+    metadata["searchtitle"] = searchtitle.replace(" : ", ": ")
 
     return metadata
 

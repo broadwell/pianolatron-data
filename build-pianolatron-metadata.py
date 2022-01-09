@@ -100,12 +100,15 @@ def get_metadata_for_druid(druid, redownload_mods):
             [
                 "x:name[descendant::x:roleTerm[text()='composer']]/x:namePart[not(@type='date')]/text()",
                 "x:name[descendant::x:roleTerm[text()='Composer']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='composer.']]/x:namePart[not(@type='date')]/text()",
                 "x:name[descendant::x:roleTerm[text()='cmp']]/x:namePart[not(@type='date')]/text()",
             ]
         ),
-        "performer": get_value_by_xpath(
-            "x:name[descendant::x:roleTerm[text()='instrumentalist']]/"
-            "x:namePart[not(@type='date')]/text()"
+        "performer": get_value_by_xpaths(
+            [
+                "x:name[descendant::x:roleTerm[text()='instrumentalist']]/x:namePart[not(@type='date')]/text()",
+                "x:name[descendant::x:roleTerm[text()='instrumentalist.']]/x:namePart[not(@type='date')]/text()",
+            ]
         ),
         "arranger": get_value_by_xpaths(
             [
@@ -133,6 +136,8 @@ def get_metadata_for_druid(druid, redownload_mods):
             [
                 "x:identifier[@type='publisher']/text()",
                 "x:originInfo[@eventType='publication']/x:publisher/text()",
+                "x:name[@type='corporate']/x:nameType/text()",
+                "x:name[descendant::x:roleTerm[text()='publisher.']]/x:namePart/text()",
             ]
         ),
         "number": get_value_by_xpath(
@@ -143,11 +148,13 @@ def get_metadata_for_druid(druid, redownload_mods):
                 "x:originInfo[@eventType='publication']/x:dateIssued[@keyDate='yes']/text()",
                 "x:originInfo[@eventType='publication']/x:dateIssued/text()",
                 "x:originInfo/x:dateIssued[@point='start']/text()",
+                "x:originInfo[@displayLabel='publisher']/x:dateIssued/text()",
             ]
         ),
         "publish_place": get_value_by_xpaths(
             [
                 "x:originInfo[@eventType='publication']/x:place/x:placeTerm[@type='text']/text()",
+                "x:originInfo[@displayLabel='publisher']/x:place/x:placeTerm/text()",
             ]
         ),
         "recording_date": get_value_by_xpaths(

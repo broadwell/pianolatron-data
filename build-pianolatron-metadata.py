@@ -37,6 +37,8 @@ ROLL_TYPES = {
     "Welte-Mignon green roll (T-98).": "welte-green",
     "Welte-Mignon licensee roll": "welte-licensee",
     "Welte-Mignon licensee roll.": "welte-licensee",
+    "Duo-Art piano rolls": "duo-art",
+    "Duo-Art piano rolls.": "duo-art",
 }
 
 PURL_BASE = "https://purl.stanford.edu/"
@@ -95,6 +97,12 @@ def get_metadata_for_druid(druid, redownload_mods):
     metadata = {
         "title_prefix": get_value_by_xpath("(x:titleInfo/x:nonSort)[1]/text()"),
         "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
+        "title_part_number": get_value_by_xpath(
+            "(x:titleInfo/x:partNumber)[1]/text()"
+        ),
+        "title_part_name": get_value_by_xpath(
+            "(x:titleInfo/x:partName)[1]/text()"
+        ),
         "subtitle": get_value_by_xpath("(x:titleInfo/x:subTitle)[1]/text()"),
         "composer": get_value_by_xpaths(
             [
@@ -272,7 +280,9 @@ def get_hole_report_data(druid, analysis_source_dir):
     hole_data = []
 
     if not txt_filepath.exists():
-        logging.info(f"Unable to find hole analysis output file for {druid}.")
+        logging.info(
+            f"Unable to find hole analysis output file for {druid} in {txt_filepath}."
+        )
         return roll_data, hole_data
 
     roll_keys = [
@@ -390,6 +400,10 @@ def refine_metadata(metadata):
         fulltitle = f"{metadata['title_prefix']} {fulltitle}"
     if metadata["subtitle"] is not None:
         fulltitle = f"{fulltitle}: {metadata['subtitle']}"
+    if metadata["title_part_number"] is not None:
+        fulltitle = f"{fulltitle}: {metadata['title_part_number']}"
+    if metadata["title_part_name"] is not None:
+        fulltitle = f"{fulltitle}: {metadata['title_part_name']}"
 
     metadata["title"] = fulltitle.replace(" : ", ": ")
 
@@ -481,7 +495,7 @@ def main():
     argparser.add_argument(
         "--midi_source_dir",
         default=MIDI_DIR,
-        help="External folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/note/DRUID_exp.mid) MIDI files",
+        help="External folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/exp/DRUID_exp.mid) MIDI files",
     )
     argparser.add_argument(
         "--analysis_source_dir",

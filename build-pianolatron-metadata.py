@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
-""" Builds per-DRUID metadata .json files and a catalog.json file listing   """
-""" rolls available for consumption by the Pianolatron app, downloading     """
-""" metadata files (if not already cached) and incorporating data from the  """
-""" rolls' MIDI files, if available. Writes JSON and MIDI files to the      """
-""" proper locations to be used by the app.                                 """
+"""
+Builds per-DRUID metadata .json files and a catalog.json file listing rolls
+available for consumption by the Pianolatron app, downloading metadata files
+(if not already cached) and incorporating data from the rolls' MIDI files, if
+available. Writes JSON and MIDI files to the proper locations to be used by
+the app.
+"""
 
 import argparse
 from csv import DictReader
@@ -281,7 +283,7 @@ def get_hole_report_data(druid, analysis_source_dir):
 
     if not txt_filepath.exists():
         logging.info(
-            f"Unable to find hole analysis output file for {druid} in {txt_filepath}."
+            f"Unable to find hole analysis output file for {druid} at {txt_filepath}."
         )
         return roll_data, hole_data
 
@@ -460,8 +462,7 @@ def main():
                        comprehensive catalog.json file that describes all rolls
                        processed, and place these files, along with the 
                        desired MIDI file type (_note or _exp) as DRUID.mid in
-                       the proper location in the Pianolatron source/assets
-                       folders.
+                       the proper locations in the Pianolatron folders.
                        If no DRUIDs are provided on the command line, the
                        script will look for CSV files in the druids/ folder,
                        and obtain DRUIDs from columns with the header "Druid".
@@ -480,7 +481,7 @@ def main():
     argparser.add_argument(
         "--redownload_manifests",
         action="store_true",
-        help="Always download IIIF manifests, overwriting files in manifests/",
+        help="Always download IIIF manifests, overwriting files in manifests/ and ignoring --iiif_source_dir",
     )
     argparser.add_argument(
         "--redownload_mods",

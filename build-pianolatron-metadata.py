@@ -97,13 +97,17 @@ def get_metadata_for_druid(druid, redownload_mods):
                 roll_type = ROLL_TYPES[note.text]
 
     metadata = {
-        "title_prefix": get_value_by_xpath("(x:titleInfo/x:nonSort)[1]/text()"),
-        "title": get_value_by_xpath("(x:titleInfo/x:title)[1]/text()"),
+        "title_prefix": get_value_by_xpath(
+            "(x:titleInfo[@usage='primary']/x:nonSort)[1]/text()"
+        ),
+        "title": get_value_by_xpath(
+            "(x:titleInfo[@usage='primary']/x:title)[1]/text()"
+        ),
         "title_part_number": get_value_by_xpath(
-            "(x:titleInfo/x:partNumber)[1]/text()"
+            "(x:titleInfo[@usage='primary']/x:partNumber)[1]/text()"
         ),
         "title_part_name": get_value_by_xpath(
-            "(x:titleInfo/x:partName)[1]/text()"
+            "(x:titleInfo[@usage='primary']/x:partName)[1]/text()"
         ),
         "subtitle": get_value_by_xpath("(x:titleInfo/x:subTitle)[1]/text()"),
         "composer": get_value_by_xpaths(
@@ -128,12 +132,12 @@ def get_metadata_for_druid(druid, redownload_mods):
         ),
         "original_composer": get_value_by_xpaths(
             [
-                "x:relatedItem[@otherType='Based on (work) :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
-                "x:relatedItem[@otherType='Based on']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
-                "x:relatedItem[@otherType='Adaptation of (work) :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
-                "x:relatedItem[@otherType='Adaptation of']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
-                "x:relatedItem[@otherType='Arrangement of :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
-                "x:relatedItem[@otherType='Arrangement of']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabel='Based on (work) :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabel='Based on']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabele='Adaptation of (work) :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabel='Adaptation of']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabel='Arrangement of :']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
+                "x:relatedItem[@displayLabel='Arrangement of']/x:name[@type='personal']/x:namePart[not(@type='date')]/text()",
             ]
         ),
         "label": get_value_by_xpaths(
@@ -407,7 +411,7 @@ def refine_metadata(metadata):
     if metadata["title_part_name"] is not None:
         fulltitle = f"{fulltitle}: {metadata['title_part_name']}"
 
-    metadata["title"] = fulltitle.replace(" : ", ": ")
+    metadata["title"] = fulltitle.replace(" : ", ": ").replace(" ; ", "; ")
 
     # Construct a summary of the roll's music to use in the searchbar
     searchtitle = None
@@ -447,7 +451,9 @@ def refine_metadata(metadata):
     else:
         searchtitle = fulltitle
 
-    metadata["searchtitle"] = searchtitle.replace(" : ", ": ")
+    metadata["searchtitle"] = searchtitle.replace(" : ", ": ").replace(
+        " ; ", "; "
+    )
 
     return metadata
 

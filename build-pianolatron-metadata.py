@@ -215,7 +215,7 @@ def get_iiif_url(iiif_manifest):
 
 def build_tempo_map_from_midi(druid):
 
-    midi_filepath = Path(f"../public/midi/{druid}.mid")
+    midi_filepath = Path(f"output/midi/{druid}.mid")
     midi = MidiFile(midi_filepath)
 
     tempo_map = []
@@ -231,7 +231,7 @@ def build_tempo_map_from_midi(druid):
 
 def merge_midi_velocities(roll_data, hole_data, druid):
 
-    midi_filepath = Path(f"../public/midi/{druid}.mid")
+    midi_filepath = Path(f"output/midi/{druid}.mid")
 
     if not midi_filepath.exists():
         logging.info(
@@ -370,13 +370,13 @@ def remap_hole_data(hole_data):
 
 
 def write_json(druid, metadata):
-    output_path = Path(f"../public/json/{druid}.json")
+    output_path = Path(f"output/json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
         json.dump(metadata, _fh)
 
 
-def get_druids_from_files():
+def get_druids_from_csv_files():
     druids_list = []
     for druid_file in Path("druids/").glob("*.csv"):
         with open(druid_file, "r", newline="") as druid_csv:
@@ -385,6 +385,13 @@ def get_druids_from_files():
                 druids_list.append(row["Druid"])
     return druids_list
 
+def get_druids_from_text_files():
+    druids_list = []
+    for druid_file in Path("druids/").glob("*.txt"):
+        with open(druid_file, "r", newline="") as druid_txt:
+            for row in druid_txt:
+                druids_list.append(row.strip())
+    return druids_list
 
 def refine_metadata(metadata):
     # Note that the CSV files that list DRUIDs by collection/roll type also
@@ -393,8 +400,9 @@ def refine_metadata(metadata):
 
     # Extract the publisher short name (e.g., Welte-Mignon) and issue number
     # from the label data, if available
-    if metadata["label"] is not None and len(metadata["label"].split(" ")) == 2:
-        metadata["number"], metadata["publisher"] = metadata["label"].split(" ")
+    if metadata["label"] is not None and len(metadata["label"].split(" ")) >= 2:
+        metadata["number"], *publisher = metadata["label"].split(" ")
+        metadata["publisher"] = " ".join(publisher)
     elif metadata["label"] is None:
         if metadata["number"] is None:
             metadata["number"] = "----"
@@ -468,7 +476,7 @@ def main():
                        comprehensive catalog.json file that describes all rolls
                        processed, and place these files, along with the 
                        desired MIDI file type (_note or _exp) as DRUID.mid in
-                       the proper locations in the Pianolatron folders.
+                       the local json/ and midi/ folders.
                        If no DRUIDs are provided on the command line, the
                        script will look for CSV files in the druids/ folder,
                        and obtain DRUIDs from columns with the header "Druid".
@@ -480,37 +488,37 @@ def main():
         help="DRUID(s) of one or more rolls to be processed, separated by spaces",
     )
     argparser.add_argument(
-        "--no_catalog",
+        "--no-catalog",
         action="store_true",
         help="Do not generate a new catalog.json (preexisting file will remain)",
     )
     argparser.add_argument(
-        "--redownload_manifests",
+        "--redownload-manifests",
         action="store_true",
         help="Always download IIIF manifests, overwriting files in manifests/ and ignoring --iiif_source_dir",
     )
     argparser.add_argument(
-        "--redownload_mods",
+        "--redownload-mods",
         action="store_true",
         help="Always download MODS files, overwriting files in mods/",
     )
     argparser.add_argument(
-        "--use_exp_midi",
+        "--use-exp-midi",
         action="store_true",
         help="Use expressionized MIDI for output .mid files in midi/ (default is to use note MIDI)",
     )
     argparser.add_argument(
-        "--midi_source_dir",
+        "--midi-source-dir",
         default=MIDI_DIR,
         help="External folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/exp/DRUID_exp.mid) MIDI files",
     )
     argparser.add_argument(
-        "--analysis_source_dir",
+        "--analysis-source-dir",
         default=TXT_DIR,
         help="External folder containg hole analysis output files (DRUID.txt)",
     )
     argparser.add_argument(
-        "--iiif_source_dir",
+        "--iiif-source-dir",
         default=IIIF_DIR,
         help="External folder containg pre-downloaded IIIF manifests (DRUID.json)",
     )
@@ -523,7 +531,8 @@ def main():
         DRUIDS = args.druids
 
     if len(DRUIDS) == 0:
-        DRUIDS = get_druids_from_files()
+        DRUIDS.extend(get_druids_from_csv_files())
+        DRUIDS.extend(get_druids_from_text_files())
 
     # Override cmd line or CSV DRUIDs lists
     # DRUIDS = ["hb523vs3190"]
@@ -550,14 +559,14 @@ def main():
         ):
             copy(
                 Path(f"{args.midi_source_dir}/note/{druid}_note.mid"),
-                Path(f"../public/midi/{druid}.mid"),
+                Path(f"output/midi/{druid}.mid"),
             )
-            note_midi = MidiFile(Path(f"../public/midi/{druid}.mid"))
+            note_midi = MidiFile(Path(f"output/midi/{druid}.mid"))
             metadata["NOTE_MIDI_TPQ"] = note_midi.ticks_per_beat
         elif Path(f"{args.midi_source_dir}/exp/{druid}_exp.mid").exists():
             copy(
                 Path(f"{args.midi_source_dir}/exp/{druid}_exp.mid"),
-                Path(f"../public/midi/{druid}.mid"),
+                Path(f"output/midi/{druid}.mid"),
             )
 
         if WRITE_TEMPO_MAPS:
@@ -589,14 +598,15 @@ def main():
                     "title": metadata["searchtitle"],
                     "image_url": get_iiif_url(iiif_manifest),
                     "type": metadata["type"],
-                    "label": metadata["label"],
+                    "number": metadata["number"],
+                    "publisher": metadata["publisher"],
                 }
             )
 
     if not args.no_catalog:
         sorted_catalog = sorted(catalog_entries, key=lambda i: i["title"])
         with open(
-            "../src/config/catalog.json", "w", encoding="utf8"
+            "output/catalog.json", "w", encoding="utf8"
         ) as catalog_file:
             json.dump(
                 sorted_catalog,

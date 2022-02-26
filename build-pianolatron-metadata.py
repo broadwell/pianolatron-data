@@ -376,37 +376,61 @@ def write_json(druid, metadata):
         json.dump(metadata, _fh)
 
 
+def get_druids_from_csv_file(druids_fp):
+    if not Path(druids_fp).exists():
+        logging.error(f"Unable to find DRUIDs file {druids_fp}")
+        return []
+    druids_list = []
+    with open(druids_fp, "r", newline="") as druid_csv:
+        druid_reader = DictReader(druid_csv)
+        for row in druid_reader:
+            druids_list.append(row["Druid"])
+    return druids_list
+
+
+def get_druids_from_txt_file(druids_fp):
+    if not Path(druids_fp).exists():
+        logging.error(f"Unable to find DRUIDs file {druids_fp}")
+        return []
+    druids_list = []
+    with open(druids_fp, "r") as druid_txt:
+        for line in druid_txt:
+            druids_list.append(line.strip())
+    return druids_list
+
+
 def get_druids_from_csv_files():
     druids_list = []
     for druid_file in Path("druids/").glob("*.csv"):
-        with open(druid_file, "r", newline="") as druid_csv:
-            druid_reader = DictReader(druid_csv)
-            for row in druid_reader:
-                druids_list.append(row["Druid"])
+        druids_list.extend(get_druids_from_csv_file(druid_file))
     return druids_list
 
-def get_druids_from_text_files():
+
+def get_druids_from_txt_files():
     druids_list = []
     for druid_file in Path("druids/").glob("*.txt"):
-        with open(druid_file, "r", newline="") as druid_txt:
-            for row in druid_txt:
-                druids_list.append(row.strip())
+        druids_list.extend(get_druids_from_txt_file(druid_file))
     return druids_list
+
 
 def refine_metadata(metadata):
     # Note that the CSV files that list DRUIDs by collection/roll type also
     # provide descriptions for each roll with some of this metadata, but these
     # files (or descriptions) won't always be available
 
+    if metadata["publisher"] == "[publisher not identified]":
+        metadata["publisher"] = "N/A"
+
     # Extract the publisher short name (e.g., Welte-Mignon) and issue number
     # from the label data, if available
-    if metadata["label"] is not None and len(metadata["label"].split(" ")) >= 2:
-        metadata["number"], *publisher = metadata["label"].split(" ")
-        metadata["publisher"] = " ".join(publisher)
-    elif metadata["label"] is None:
-        if metadata["number"] is None:
-            metadata["number"] = "----"
-        metadata["label"] = metadata["number"] + " " + metadata["publisher"]
+    if metadata["label"] is not None:
+        if len(metadata["label"].split(" ")) >= 2:
+            metadata["number"], *publisher = metadata["label"].split(" ")
+            metadata["publisher"] = " ".join(publisher)
+        else:
+            metadata["number"] = metadata["label"]
+    if metadata["label"] is None and metadata["number"] is None:
+        metadata["number"] = "----"
 
     # Construct a more user-friendly title from the contents of <titleInfo>
     fulltitle = metadata["title"].capitalize()
@@ -477,15 +501,30 @@ def main():
                        processed, and place these files, along with the 
                        desired MIDI file type (_note or _exp) as DRUID.mid in
                        the local json/ and midi/ folders.
-                       If no DRUIDs are provided on the command line, the
-                       script will look for CSV files in the druids/ folder,
-                       and obtain DRUIDs from columns with the header "Druid".
+                       DRUIDs of rolls to be processed can be specified as a
+                       space-delimited list on the command line, in a text file
+                       with one DRUID per line (using the -f option), or in
+                       a CSV file with DRUIDs in the column with the header
+                       "Druid" (-c option). If no DRUIDs are supplied, the
+                       script will search the druids/ folder for text or CSV
+                       files and will process all of the DRUIDs it finds listed
+                       there.
                     """
     )
     argparser.add_argument(
         "druids",
         nargs="*",
         help="DRUID(s) of one or more rolls to be processed, separated by spaces",
+    )
+    argparser.add_argument(
+        "-c",
+        "--druids-csv-file",
+        help="Path to a CSV file listing rolls, with DRUIDs in the 'Druid' column",
+    )
+    argparser.add_argument(
+        "-f",
+        "--druids-txt-file",
+        help="Path to a plain text file listing DRUIDs to be processed, one per line",
     )
     argparser.add_argument(
         "--no-catalog",
@@ -527,14 +566,19 @@ def main():
 
     DRUIDS = []
 
-    if "druids" in args:
+    if len(args.druids) > 0:
         DRUIDS = args.druids
+        print(DRUIDS)
+    elif args.druids_csv_file is not None:
+        DRUIDS = get_druids_from_csv_file(args.druids_csv_file)
+    elif args.druids_txt_file is not None:
+        DRUIDS = get_druids_from_txt_file(args.druids_txt_file)
 
     if len(DRUIDS) == 0:
         DRUIDS.extend(get_druids_from_csv_files())
-        DRUIDS.extend(get_druids_from_text_files())
+        DRUIDS.extend(get_druids_from_txt_files())
 
-    # Override cmd line or CSV DRUIDs lists
+    # Override cmd line or CSV (or TXT) DRUIDs lists
     # DRUIDS = ["hb523vs3190"]
 
     catalog_entries = []

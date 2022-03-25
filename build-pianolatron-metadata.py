@@ -33,6 +33,7 @@ ROLL_TYPES = {
     "Scale: 88n.": "88-note",
     "Scale: 65n.": "65-note",
     "88n": "88-note",
+    "65n": "65-note",
     "standard": "88-note",
     "non-reproducing": "88-note",
     "Welte-Mignon green roll (T-98)": "welte-green",
@@ -91,7 +92,13 @@ def get_metadata_for_druid(druid, redownload_mods):
     )
     if type_note is not None and type_note in ROLL_TYPES:
         roll_type = ROLL_TYPES[type_note]
-    else:
+    scale_note = get_value_by_xpath(
+        "x:physicalDescription/x:note[@displayLabel='Scale']/text()"
+    )
+    if scale_note is not None and scale_note in ROLL_TYPES:
+        roll_type = ROLL_TYPES[scale_note]
+
+    if roll_type == "NA":
         for note in xml_tree.xpath("(x:note)", namespaces=NS):
             if note is not None and note.text in ROLL_TYPES:
                 roll_type = ROLL_TYPES[note.text]

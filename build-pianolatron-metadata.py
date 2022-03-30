@@ -23,7 +23,7 @@ import requests
 WRITE_TEMPO_MAPS = False
 
 # These are either duplicates of existing rolls, or rolls that are listed in
-# the DRUIDs files but have mysteriously disappeared from the catalog
+# the DRUIDs files but have since disappeared from the library catalog
 ROLLS_TO_SKIP = ["rr052wh1991", "hm136vg1420"]
 
 ROLL_TYPES = {
@@ -54,6 +54,11 @@ IIIF_DIR = "manifests"
 
 
 def get_metadata_for_druid(druid, redownload_mods):
+    """Obtains a .mods metadata file for the roll specified by DRUID either
+    from the local mods/ folder or the Stanford Digital Repository, then
+    parses the XML to build the metadata dictionary for the roll.
+    """
+
     def get_value_by_xpath(xpath):
         try:
             return xml_tree.xpath(
@@ -78,9 +83,7 @@ def get_metadata_for_druid(druid, redownload_mods):
         response = requests.get(f"{PURL_BASE}{druid}.mods")
         xml_tree = etree.fromstring(response.content)
         with mods_filepath.open("w") as _fh:
-            _fh.write(
-                etree.tostring(xml_tree, encoding="unicode", pretty_print=True)
-            )
+            _fh.write(etree.tostring(xml_tree, encoding="unicode", pretty_print=True))
     else:
         xml_tree = etree.parse(mods_filepath.open())
 
@@ -161,9 +164,7 @@ def get_metadata_for_druid(druid, redownload_mods):
                 "x:name[descendant::x:roleTerm[text()='publisher.']]/x:namePart/text()",
             ]
         ),
-        "number": get_value_by_xpath(
-            "x:identifier[@type='publisher number']/text()"
-        ),
+        "number": get_value_by_xpath("x:identifier[@type='publisher number']/text()"),
         "publish_date": get_value_by_xpaths(
             [
                 "x:originInfo[@eventType='publication']/x:dateIssued[@keyDate='yes']/text()",
@@ -194,6 +195,10 @@ def get_metadata_for_druid(druid, redownload_mods):
 
 
 def get_iiif_manifest(druid, redownload_manifests, iiif_source_dir):
+    """Obtains a .json IIIF manifest file for the roll specified by DRUID
+    from the local manifests/ folder or by downloading it from the Stanford
+    Digital Repository, then loads it into the iiif_manifest dictionary.
+    """
 
     target_iiif_filepath = Path(f"manifests/{druid}.json")
     source_iiif_filepath = Path(f"{iiif_source_dir}/{druid}.json")
@@ -213,14 +218,21 @@ def get_iiif_manifest(druid, redownload_manifests, iiif_source_dir):
     return iiif_manifest
 
 
-def get_iiif_url(iiif_manifest):
-    resource_id = iiif_manifest["sequences"][0]["canvases"][0]["images"][0][
-        "resource"
-    ]["@id"]
+def get_iiif_image_url(iiif_manifest):
+    """Given a IIIF manifest dictionary, derives the value for the info.json
+    file URL, which can then be stored in the roll metadata and eventually
+    used to display the roll image in a viewer such as OpenSeadragon."""
+
+    resource_id = iiif_manifest["sequences"][0]["canvases"][0]["images"][0]["resource"][
+        "@id"
+    ]
     return resource_id.replace("full/full/0/default.jpg", "info.json")
 
 
 def build_tempo_map_from_midi(druid):
+    """Extracts the tempo events (if present) from the output MIDI file for the
+    roll specified by the input DRUID and return it as a list of timings and
+    tempos."""
 
     midi_filepath = Path(f"output/midi/{druid}.mid")
     midi = MidiFile(midi_filepath)
@@ -237,6 +249,12 @@ def build_tempo_map_from_midi(druid):
 
 
 def merge_midi_velocities(roll_data, hole_data, druid):
+    """Parses the output MIDI file for the roll specified by the input DRUID
+    and aligns the velocities assigned to each note event to the detected holes
+    in the provided hole_data input, which is derived from the roll image
+    parsing output. This aligned data can then be provided in the roll JSON
+    output file for use when highlighting the note holes in the roll when it is
+    displayed in the Pianolatron app."""
 
     midi_filepath = Path(f"output/midi/{druid}.mid")
 
@@ -261,16 +279,13 @@ def merge_midi_velocities(roll_data, hole_data, druid):
                 # works with the in-app expression code
                 if event.velocity > 1:
                     if current_tick in tick_notes_velocities:
-                        tick_notes_velocities[current_tick][
-                            event.note
-                        ] = event.velocity
+                        tick_notes_velocities[current_tick][event.note] = event.velocity
                     else:
                         tick_notes_velocities[current_tick] = {
                             event.note: event.velocity
                         }
 
-    for i in range(len(hole_data)):
-        hole = hole_data[i]
+    for i, hole in enumerate(hole_data):
 
         hole_tick = int(hole["ORIGIN_ROW"]) - first_music_px
         hole_midi = int(hole["MIDI_KEY"])
@@ -279,14 +294,15 @@ def merge_midi_velocities(roll_data, hole_data, druid):
             hole_tick in tick_notes_velocities
             and hole_midi in tick_notes_velocities[hole_tick]
         ):
-            hole_data[i]["VELOCITY"] = tick_notes_velocities[hole_tick][
-                hole_midi
-            ]
+            hole_data[i]["VELOCITY"] = tick_notes_velocities[hole_tick][hole_midi]
 
     return hole_data
 
 
 def get_hole_report_data(druid, analysis_source_dir):
+    """Extracts hole parsing data for the roll specified by DRUID from the roll
+    image parsing output in the associated .txt analysis output file."""
+
     txt_filepath = Path(f"{analysis_source_dir}/{druid}.txt")
 
     roll_data = {}
@@ -355,6 +371,8 @@ def get_hole_report_data(druid, analysis_source_dir):
 
 
 def remap_hole_data(hole_data):
+    """Abbreviates the keys in the supplied hole_data structure so that it uses
+    less space when stored in a JSON file for use with the Pianolatron app."""
 
     new_hole_data = []
 
@@ -377,6 +395,8 @@ def remap_hole_data(hole_data):
 
 
 def write_json(druid, metadata):
+    """Outputs the JSON data file for the roll specified by DRUID."""
+
     output_path = Path(f"output/json/{druid}.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w") as _fh:
@@ -384,6 +404,9 @@ def write_json(druid, metadata):
 
 
 def get_druids_from_csv_file(druids_fp):
+    """Returns a list of the DRUIDs in the "Druid" column of the specified CSV
+    file."""
+
     if not Path(druids_fp).exists():
         logging.error(f"Unable to find DRUIDs file {druids_fp}")
         return []
@@ -396,6 +419,9 @@ def get_druids_from_csv_file(druids_fp):
 
 
 def get_druids_from_txt_file(druids_fp):
+    """If the specified text input file contains one DRUID per line, parses it
+    into a list of DRUIDS."""
+
     if not Path(druids_fp).exists():
         logging.error(f"Unable to find DRUIDs file {druids_fp}")
         return []
@@ -407,6 +433,9 @@ def get_druids_from_txt_file(druids_fp):
 
 
 def get_druids_from_csv_files():
+    """Runs get_druids_from_csv_file() on all of the CSV files in the druids/
+    folder."""
+
     druids_list = []
     for druid_file in Path("druids/").glob("*.csv"):
         druids_list.extend(get_druids_from_csv_file(druid_file))
@@ -414,6 +443,9 @@ def get_druids_from_csv_files():
 
 
 def get_druids_from_txt_files():
+    """Runs get_druids_from_txt_file() on all of the text files in the druids/
+    folder."""
+
     druids_list = []
     for druid_file in Path("druids/").glob("*.txt"):
         druids_list.extend(get_druids_from_txt_file(druid_file))
@@ -421,9 +453,14 @@ def get_druids_from_txt_files():
 
 
 def refine_metadata(metadata):
+    """Applies various rules to massage the roll metadata extracted from its
+    MODS file in get_metadata_for_druid() into formats that can be included
+    in the catalog.json and per-roll JSON metadata files, accommodating missing
+    fields and other oddities of the raw metadata."""
+
     # Note that the CSV files that list DRUIDs by collection/roll type also
     # provide descriptions for each roll with some of this metadata, but these
-    # files (or descriptions) won't always be available
+    # files (or descriptions) won't always be available.
 
     if metadata["publisher"] == "[publisher not identified]":
         metadata["publisher"] = "N/A"
@@ -460,9 +497,7 @@ def refine_metadata(metadata):
         composer_short = metadata["composer"].split(",")[0].strip()
 
     if metadata["original_composer"] is not None:
-        original_composer_short = (
-            metadata["original_composer"].split(",")[0].strip()
-        )
+        original_composer_short = metadata["original_composer"].split(",")[0].strip()
         if (
             metadata["composer"] is not None
             and original_composer_short != composer_short
@@ -490,9 +525,7 @@ def refine_metadata(metadata):
     else:
         searchtitle = fulltitle
 
-    metadata["searchtitle"] = searchtitle.replace(" : ", ": ").replace(
-        " ; ", "; "
-    )
+    metadata["searchtitle"] = searchtitle.replace(" : ", ": ").replace(" ; ", "; ")
 
     return metadata
 
@@ -507,7 +540,7 @@ def main():
                        comprehensive catalog.json file that describes all rolls
                        processed, and place these files, along with the 
                        desired MIDI file type (_note or _exp) as DRUID.mid in
-                       the local json/ and midi/ folders.
+                       the local output/json/ and output/midi/ folders.
                        DRUIDs of rolls to be processed can be specified as a
                        space-delimited list on the command line, in a text file
                        with one DRUID per line (using the -f option), or in
@@ -556,41 +589,42 @@ def main():
     argparser.add_argument(
         "--midi-source-dir",
         default=MIDI_DIR,
-        help="External folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/exp/DRUID_exp.mid) MIDI files",
+        help="Folder containg note (DIR/note/DRUID_note.mid) or expressionized (DIR/exp/DRUID_exp.mid) MIDI files",
     )
     argparser.add_argument(
         "--analysis-source-dir",
         default=TXT_DIR,
-        help="External folder containg hole analysis output files (DRUID.txt)",
+        help="Folder containg hole analysis output files (DRUID.txt)",
     )
     argparser.add_argument(
         "--iiif-source-dir",
         default=IIIF_DIR,
-        help="External folder containg pre-downloaded IIIF manifests (DRUID.json)",
+        help="Folder containg pre-downloaded IIIF manifests (DRUID.json)",
     )
 
     args = argparser.parse_args()
 
-    DRUIDS = []
+    druids = []
 
     if len(args.druids) > 0:
-        DRUIDS = args.druids
-        print(DRUIDS)
+        druids = args.druids
     elif args.druids_csv_file is not None:
-        DRUIDS = get_druids_from_csv_file(args.druids_csv_file)
+        druids = get_druids_from_csv_file(args.druids_csv_file)
     elif args.druids_txt_file is not None:
-        DRUIDS = get_druids_from_txt_file(args.druids_txt_file)
+        druids = get_druids_from_txt_file(args.druids_txt_file)
 
-    if len(DRUIDS) == 0:
-        DRUIDS.extend(get_druids_from_csv_files())
-        DRUIDS.extend(get_druids_from_txt_files())
+    # If no DRDUIDS or .txt or .csv files containing DRUIDs are provided on the
+    # command line, look for files listing DRUIDS in the local druids/ folder.
+    if len(druids) == 0:
+        druids.extend(get_druids_from_csv_files())
+        druids.extend(get_druids_from_txt_files())
 
     # Override cmd line or CSV (or TXT) DRUIDs lists
-    # DRUIDS = ["hb523vs3190"]
+    # druids = ["hb523vs3190"]
 
     catalog_entries = []
 
-    for druid in DRUIDS:
+    for druid in druids:
 
         if druid in ROLLS_TO_SKIP:
             logging.info(f"Skippig DRUID {druid}")
@@ -623,9 +657,7 @@ def main():
         if WRITE_TEMPO_MAPS:
             metadata["tempoMap"] = build_tempo_map_from_midi(druid)
 
-        roll_data, hole_data = get_hole_report_data(
-            druid, args.analysis_source_dir
-        )
+        roll_data, hole_data = get_hole_report_data(druid, args.analysis_source_dir)
 
         metadata = refine_metadata(metadata)
 
@@ -647,7 +679,7 @@ def main():
                 {
                     "druid": druid,
                     "title": metadata["searchtitle"],
-                    "image_url": get_iiif_url(iiif_manifest),
+                    "image_url": get_iiif_image_url(iiif_manifest),
                     "type": metadata["type"],
                     "number": metadata["number"],
                     "publisher": metadata["publisher"],
@@ -656,9 +688,7 @@ def main():
 
     if not args.no_catalog:
         sorted_catalog = sorted(catalog_entries, key=lambda i: i["title"])
-        with open(
-            "output/catalog.json", "w", encoding="utf8"
-        ) as catalog_file:
+        with open("output/catalog.json", "w", encoding="utf8") as catalog_file:
             json.dump(
                 sorted_catalog,
                 catalog_file,
